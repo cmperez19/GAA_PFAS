@@ -1,4 +1,4 @@
-setwd("~/GitHub/Planet_Epigenetic_GA_Clocks")
+setwd("~/Downloads")
 library(planet)
 #data(plBetas)
 #data(plPhenoData)
