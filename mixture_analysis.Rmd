@@ -1,0 +1,178 @@
+```{r}
+library(bkmr)
+library(gWQS)
+library(wqspt)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(reshape2)
+library(tidyverse)
+library(planet)
+library(qgcomp)
+
+load("2_BMIQ_Adjsuted.RData")
+load("ALLBETAS.FunNormBMIQ.RData")
+colnames(FunNorm.BMIQ.ALL) = pd$Sample_Name
+
+load("/Users/cynthiaperez/WGCNA_PFAS/log_PFAS_pheno.Rdata")
+## Drop the two samples that weren't run (G-155 & G-157):
+# Get the intersection of column names to keep
+cols_to_keep <- intersect(colnames(FunNorm.BMIQ.ALL), rownames(log_pfas))
+
+# Subset FunNorm.BMIQ.ALL to keep only the columns present in cols_to_keep
+FunNorm.BMIQ.ALL <- FunNorm.BMIQ.ALL[, cols_to_keep]
+
+pheno <- pheno[colnames(FunNorm.BMIQ.ALL),]
+#rownames(log_pfas) == rownames(pheno) are now true after this next line 
+log_pfas <- log_pfas[colnames(FunNorm.BMIQ.ALL),]
+
+#add PFAS data columns to pheno change names 
+pheno = cbind(pheno, log_pfas[,c("L-PFOA","PFHxS","PFNA","PFDA","s-PFOS")])
+colnames(pheno)[50] = "PFOA"
+colnames(pheno)[54] = "PFOS"
+
+pheno$RPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "RPC")
+pheno$CPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "CPC")
+pheno$RRPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "RRPC")
+
+pheno$RPC_lm_residuals = summary(lm(RPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$RRPC_lm_residuals = summary(lm(RRPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$CPC_lm_residuals= summary(lm(CPC_clock~gest_age_in_weeks_edd, pheno))$residual
+```
+
+```{r}
+pheno["G-257","MomBMI_36wks"] = mean(pheno$MomBMI_36wks, na.rm = TRUE)
+```
+
+```{r}
+mixture<-as.matrix(pheno[,50:54])
+y<- pheno$CPC_lm_residuals
+#recoding covariates to be numeric 
+pheno$mom_education <- substr(pheno$mom_education, 1, 1)
+pheno$childs_sex <- if_else(pheno$childs_sex == "Male", 0, 1)
+pheno$official_enroll_category <- if_else(pheno$official_enroll_category == "Overweight", 1, 0)
+covariates<-pheno[,c("mom_age_at_birth", "mom_education", "MomBMI_36wks", "childs_sex", "MomBMI_10wks","official_enroll_category")]
+covariates <-matrix(as.numeric(unlist(covariates)),nrow=nrow(covariates))
+colnames(covariates) <- c("mom_age_at_birth", "mom_education", "MomBMI_36wks", "childs_sex", "MomBMI_10wks","official_enroll_category")
+```
+Fit BKMR
+To fit the BKMR model, we use the kmbayes function. This function implements the Markov chain Monte Carlo (MCMC) algorithm. The argument iter indicates the number of iterations of the MCMC sampler; y is the vector of outcomes, Z is a matrix of exposures (each column is an exposure variable); X is a matrix of covariates (each column is a covariate); verbose indicates whether interim output summarizing the progress of the model fitting should be printed; and varsel indicates whether to conduct variable selection on the predictors zim (the exposure profile for individual i).
+
+```{r}
+set.seed(10)
+knots100  <- fields::cover.design(mixture, nd = 50)$design
+
+temp <-  kmbayes(y=y, Z=mixture, X=covariates, iter=1000, verbose=FALSE, 
+                 varsel=TRUE, knots=knots100)
+```
+Investigate model convergence
+Let’s visually inspect the trace plots, showing how various parameter values change as the sampler runs.
+```{r}
+#demonstrates how the relationships between study variables change throughout the simulation runs, from zero to the end
+TracePlot(fit = temp, par = "beta")
+#average epsilon (ε)—(sigsq.eps) which measures the error of the true regression line. 
+TracePlot(fit = temp, par = "sigsq.eps")
+#displays the correlation value 
+TracePlot(fit = temp, par = "r", comp = 1)
+```
+Estimated posterior inclusion probabilities
+```{r}
+ExtractPIPs(temp)
+```
+One cross section of interest is the univariate relationship between each zm and the outcome, where all of the other exposures are fixed to a particular percentile. This can be done using the function PredictorResponseUnivar. The argument specifying the quantile at which to fix the other exposures is given by q.fixed (the default value is q.fixed = 0.5).
+```{r}
+pred.resp.univar <- PredictorResponseUnivar(fit = temp)
+```
+We use the ggplot2 package to plot the resulting cross section of h.
+```{r}
+ggplot(pred.resp.univar, aes(z, est, ymin = est - 1.96*se, ymax = est + 1.96*se)) + 
+    geom_smooth(stat = "identity") + 
+    facet_wrap(~ variable) +
+  ylab("h(z)")
+```
+Summary statistics of the predictor-response function
+```{r}
+risks.overall <- OverallRiskSummaries(fit = temp, y=y, Z=mixture, X=covariates, qs = seq(0.25, 0.75, by = 0.05), q.fixed = 0.5, method = "exact")
+risks.overall
+```
+```{r}
+ggplot(risks.overall, aes(quantile, est, ymin = est - 1.96*sd, ymax = est + 1.96*sd)) + 
+    geom_pointrange()
+```
+```{r}
+risks.singvar <- SingVarRiskSummaries(fit = temp, y=y, Z=mixture, X=covariates, 
+                                      qs.diff = c(0.25, 0.75), 
+                                      q.fixed = c(0.25, 0.50, 0.75),
+                                      method = "exact")
+risks.singvar
+```
+```{r}
+ggplot(risks.singvar, aes(variable, est, ymin = est - 1.96*sd, 
+                          ymax = est + 1.96*sd, col = q.fixed)) + 
+    geom_pointrange(position = position_dodge(width = 0.75)) + 
+  coord_flip()
+```
+
+Stratified by sex - males 
+```{r}
+
+mixture_m<-as.matrix(pheno[which(pheno$childs_sex == 0),56:60])
+y_m <- pheno[which(pheno$childs_sex == 0), "CPC_lm_residuals"]
+covariates_m<-pheno[which(pheno$childs_sex == 0),c("mom_age_at_birth", "mom_education", "MomBMI_36wks", "childs_sex", "MomBMI_10wks","official_enroll_category")]
+covariates_m <-matrix(as.numeric(unlist(covariates_m)),nrow=nrow(covariates_m))
+colnames(covariates_m) <- c("mom_age_at_birth", "mom_education", "MomBMI_36wks", "childs_sex", "MomBMI_10wks","official_enroll_category")
+
+set.seed(10)
+knots100  <- fields::cover.design(mixture, nd = 50)$design
+
+temp <-  kmbayes(y=y_m, Z=mixture_m, X=covariates_m, iter=1000, verbose=FALSE, 
+                 varsel=TRUE, knots= knots100)
+
+pred.resp.univar <- PredictorResponseUnivar(fit = temp)
+ggplot(pred.resp.univar, aes(z, est, ymin = est - 1.96*se, ymax = est + 1.96*se)) + 
+    geom_smooth(stat = "identity") + 
+    facet_wrap(~ variable) +
+  ylab("h(z)")
+```
+
+
+```{r}
+knitr::include_graphics("/Users/cynthiaperez/Downloads/Gennings_WQS_lecture_2023_14.png")
+```
+
+```{r}
+PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS")
+results2i <- gwqs(formula = CPC_lm_residuals~ wqs*childs_sex + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category, bint_cont_pos = TRUE, mix_name = PFASp, data = pheno, q = 10, validation = 0, b = 20, b1_pos = T, plan_strategy = "multicore", family = "gaussian", seed = 10)
+
+summary(results2i)
+```
+```{r}
+PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS")
+results2i <- gwqs(formula = CPC_lm_residuals~ wqs + mom_age_at_birth + mom_education + MomBMI_36wks  + MomBMI_10wks + official_enroll_category, bint_cont_pos = TRUE, mix_name = PFASp, data = pheno[which(pheno$childs_sex == 1),], q = 10, validation = 0, b = 20, b1_pos = T, plan_strategy = "multicore", family = "gaussian", seed = 10)
+
+summary(results2i)
+```
+
+
+```{r}
+# bar plot
+gwqs_barplot(results2i)
+# scatter plot y vs wqs
+gwqs_scatterplot(results2i)
+# scatter plot residuals vs fitted values
+gwqs_fitted_vs_resid(results2i)
+# boxplot of the weights estimated at each repeated holdout step
+gwqs_boxplot(results2i)
+
+```
+
+
+```{r}
+library(qgcompint)
+qfitemm <- qgcomp.emm.noboot(f= CPC_lm_residuals ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category,
+           emmvar="childs_sex", 
+           expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), 
+           data=pheno, q=4, 
+           family=gaussian())
+```
+

@@ -1,0 +1,859 @@
+---
+title: "Reproducing Epigenetic Clock Results "
+output: html_document
+date: "2024-02-13"
+---
+```{r}
+setwd("~/GitHub/Planet_Epigenetic_GA_Clocks")
+library(tidyverse)
+library(planet)
+library(qgcomp)
+library(ggpubr)
+load("2_BMIQ_Adjsuted.RData")
+load("ALLBETAS.FunNormBMIQ.RData")
+library(r2excel)
+colnames(FunNorm.BMIQ.ALL) = pd$Sample_Name
+
+load("/Users/cynthiaperez/WGCNA_PFAS/log_PFAS_pheno.Rdata")
+## Drop the two samples that weren't run (G-155 & G-157):
+# Get the intersection of column names to keep
+cols_to_keep <- intersect(colnames(FunNorm.BMIQ.ALL), rownames(log_pfas))
+
+# Subset FunNorm.BMIQ.ALL to keep only the columns present in cols_to_keep
+FunNorm.BMIQ.ALL <- FunNorm.BMIQ.ALL[, cols_to_keep]
+
+pheno <- pheno[colnames(FunNorm.BMIQ.ALL),]
+#rownames(log_pfas) == rownames(pheno) are now true after this next line 
+log_pfas <- log_pfas[colnames(FunNorm.BMIQ.ALL),]
+
+#add PFAS data columns to pheno change names 
+pheno = cbind(pheno, log_pfas[,c("L-PFOA","PFHxS","PFNA","PFDA","s-PFOS")])
+colnames(pheno)[50] = "PFOA"
+colnames(pheno)[54] = "PFOS"
+```
+
+
+
+
+```{r}
+t.test(pheno$gest_age_in_weeks_edd[which(pheno$childs_sex == "Female")], pheno$gest_age_in_weeks_edd[which(pheno$childs_sex == "Male")])
+```
+```{r}
+t.test(pheno$birth_len_cm[which(pheno$childs_sex == "Female")], pheno$birth_len_cm[which(pheno$childs_sex == "Male")])
+```
+
+```{r}
+t.test(pheno$birth_wt_kg[which(pheno$childs_sex == "Female")], pheno$birth_wt_kg[which(pheno$childs_sex == "Male")])
+```
+
+```{r}
+t.test(pheno$CPC_lm_residuals[which(pheno$childs_sex == "Female")], pheno$CPC_lm_residuals[which(pheno$childs_sex == "Male")])
+```
+
+```{r}
+hist(pheno$gest_age_in_weeks_edd)
+```
+
+```{r}
+p <- ggboxplot(pheno, x = "childs_sex", y = "gest_age_in_weeks_edd",
+          add = "jitter", xlab = "Sex of Infant", ylab = "Gestational Age")
+p + stat_compare_means(method = "t.test", label.x = 1.4, label.y = 42)
+```
+
+```{r}
+p <- ggboxplot(pheno, x = "childs_sex", y = "CPC_lm_residuals",
+          add = "jitter", xlab = "Sex of Infant", ylab = "Gestational Age Acceleration")
+p + stat_compare_means(method = "t.test", label.x = 1.4, label.y = 3)
+```
+```{r}
+
+p <- ggboxplot(pheno, x = "childs_sex", y = "birth_len_cm",
+          add = "jitter", xlab = "Sex of Infant", ylab = "Birth Length")
+p + stat_compare_means(method = "t.test", label.x = 1.4, label.y = 55)
+```
+```{r}
+
+p <- ggboxplot(pheno, x = "childs_sex", y = "birth_wt_kg",
+          add = "jitter", xlab = "Sex of Infant", ylab = "Birth Weight")
+p + stat_compare_means(method = "t.test", label.x = 1.4, label.y = 4.6)
+```
+
+
+#Predict Epigenetic Age 
+```{r}
+pheno$RPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "RPC")
+pheno$CPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "CPC")
+pheno$RRPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "RRPC")
+```
+
+#Extract redisudals (GAA)
+```{r}
+pheno$RPC_lm_residuals = summary(lm(RPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$RRPC_lm_residuals = summary(lm(RRPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$CPC_lm_residuals= summary(lm(CPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+```
+
+
+#GAA ~ PFAS 
+**for loop of GAA (produced by CPC) ~ PFAS with covariates mom age at birth, mom education, mom BMI 36 weeks, sex, Mom BMI 10 weeks, and official enrollment category** 
+```{r}
+PFAS_cpc_lm = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category "), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm = rbind(PFAS_cpc_lm, df)
+}
+
+PFAS_cpc_lm
+```
+
+#GAA ~ PFAS mixture 
+```{r}
+GAA_mixture = qgcomp(CPC_lm_residuals ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+GAA_mixture = data.frame(estimate =  GAA_mixture[["psi"]], p.value = GAA_mixture[["pval"]][2])
+```
+
+#sheet 1 of xlsx
+```{r}
+filename = "GAA_tables.xlsx"
+wb = createWorkbook(type = "xlsx")
+sheet = createSheet(wb, "Sheet 1")
+xlsx.addHeader(wb, sheet, value = "GAA ~ PFAS individual analysis", level = 2, color = "black")
+xlsx.addLineBreak(sheet, 1)
+covariates = "covariates: mom_age_at_birth, mom_education, MomBMI_36wks, childs_sex, MomBMI_10wks, official_enroll_category"
+xlsx.addParagraph(wb, sheet, value = covariates, colSpan = 6, rowSpan = 3, fontSize = 15)
+xlsx.addTable(wb, sheet, PFAS_cpc_lm)
+xlsx.addLineBreak(sheet, 1)
+xlsx.addParagraph(wb, sheet, value = "mixture analysis", colSpan = 4, rowSpan = 2, fontSize = 15)
+xlsx.addTable(wb, sheet, GAA_mixture)
+#saveWorkbook(wb, filename)
+#xlsx.openFile(filename)
+```
+
+
+#GAA ~ PFAS * sex (for loop )
+```{r}
+PFAS_cpc_int = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + childs_sex:",i), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[10,4]
+  estimate <- coef(model)[10]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_int = rbind(PFAS_cpc_int, df)
+}
+
+PFAS_cpc_int
+```
+
+#GAA ~ PFAS mixture stratified by sex 
+```{r}
+print("males")
+m = qgcomp(CPC_lm_residuals ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Male"),], q = 4)
+
+
+print("Female")
+f = qgcomp(CPC_lm_residuals ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Female"),], q = 4)
+
+mixture_stratified = data.frame(sex = c("male", "female"), estimate =  c(m[["psi"]], f[["psi"]]), p.value = c(m[["pval"]][2], f[["pval"]][2]))
+```
+
+#GAA ~ PFAS stratified for females (independent PFAS analysis )
+```{r}
+PFAS_cpc_lm_f = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category "), data = pheno[which(pheno$childs_sex == "Female"),])
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm_f = rbind(PFAS_cpc_lm_f, df)
+}
+
+PFAS_cpc_lm_f
+```
+
+#GAA ~ PFAS stratified for male (independent PFAS analysis )
+```{r}
+PFAS_cpc_lm_m = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category"), data = pheno[which(pheno$childs_sex == "Male"),])
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm_m = rbind(PFAS_cpc_lm_m, df)
+}
+
+PFAS_cpc_lm_m
+```
+
+#mixture interaction analysis 
+```{r}
+library(qgcompint)
+qfitemm <- qgcomp.emm.noboot(f= CPC_lm_residuals ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category,
+           emmvar="childs_sex", 
+           expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), 
+           data=pheno, q=4, 
+           family=gaussian())
+mixture_int =  data.frame(estimate =  qfitemm[["psiint"]], p.value = qfitemm[["pval"]][4])
+```
+
+
+##sheet 2 of xlsx
+```{r}
+sheet2 = createSheet(wb, "Sheet 2")
+xlsx.addHeader(wb, sheet2, value = "Biological Sex Analysis", level = 1, color = "black", underline = 1)
+xlsx.addLineBreak(sheet, 1)
+covariates = "covariates: mom_age_at_birth, mom_education, MomBMI_36wks, childs_sex, MomBMI_10wks, official_enroll_category"
+xlsx.addParagraph(wb, sheet2, value = covariates, colSpan = 6, rowSpan = 3, fontSize = 15)
+xlsx.addLineBreak(sheet2, 1)
+xlsx.addHeader(wb, sheet2, value = "Sex Interaction", level = 2, color = "black")
+xlsx.addTable(wb, sheet2, PFAS_cpc_int)
+xlsx.addHeader(wb, sheet2, value = "Straitifed Analysis", level = 2, color = "black")
+xlsx.addParagraph(wb, sheet2, value = "Female", colSpan = 1, rowSpan = 1, fontSize = 13, isBold = T)
+xlsx.addTable(wb, sheet2, PFAS_cpc_lm_f)
+xlsx.addParagraph(wb, sheet2, value = "Male", colSpan = 1, rowSpan = 1, fontSize = 13, isBold = T)
+xlsx.addTable(wb, sheet2, PFAS_cpc_lm_m)
+xlsx.addHeader(wb, sheet2, value = "Straitifed Mixture Analysis", level = 2, color = "black")
+xlsx.addTable(wb, sheet2, mixture_stratified)
+xlsx.addHeader(wb, sheet2, value = "Mixture Analysis with Sex Interaction", level = 2, color = "black")
+xlsx.addTable(wb, sheet2, mixture_int)
+#saveWorkbook(wb, filename)
+#xlsx.openFile(filename)
+```
+
+
+#cell type proportion ~ PFAS mixture
+```{r}
+
+t = qgcomp(Trophoblasts ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+s = qgcomp(Stromal ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+h = qgcomp(Hofbauer ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+e = qgcomp(Endothelial ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+n = qgcomp(nRBC ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+st = qgcomp(Syncytiotrophoblast ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+mixture_cells = data.frame(cell_type = c("Trophoblasts", "Stromal", "Hofbauer", "Endothelial","nRBC", "Syncytiotrophoblast"), estimate =  c(t[["psi"]], s[["psi"]], h[["psi"]], e[["psi"]], n[["psi"]], st[["psi"]]), p.value = c(t[["pval"]][2], s[["pval"]][2], h[["pval"]][2], e[["pval"]][2], n[["pval"]][2], st[["pval"]][2]))
+```
+
+
+
+
+```{r}
+outcome_list <- c("Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
+
+mixture_cells_m = data.frame()
+   for ( i in 1:length(outcome_list)){
+    mod1.formula <- as.formula(paste0(outcome_list[i], "~official_enroll_category", 
+                                       "+mom_age_at_birth",
+                                       "+gest_age_in_weeks_edd",
+                                       "+mom_education", # cell mix  
+                                       "+PFOS",  "+PFNA", "+PFHxS",  "+PFDA", "+PFOA"))
+      q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                         # pfas 
+                                     expnms= c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"),
+                                     dat = pheno[which(pheno$childs_sex == "Male"),], 
+                                     family=gaussian(), 
+                                     q=4) 
+      
+       df = data.frame(cell = outcome_list[i], estimate = q_gcomp[["psi"]], p.value = q_gcomp[["pval"]][2])
+  mixture_cells_m = rbind(mixture_cells_m, df)
+   }
+  
+
+
+mixture_cells_f = data.frame()
+   for ( i in 1:length(outcome_list)){
+    mod1.formula <- as.formula(paste0(outcome_list[i], "~official_enroll_category", 
+                                       "+mom_age_at_birth",
+                                       "+gest_age_in_weeks_edd",
+                                       "+mom_education", # cell mix  
+                                       "+PFOS",  "+PFNA", "+PFHxS",  "+PFDA", "+PFOA"))
+      q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                         # pfas 
+                                     expnms= c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"),
+                                     dat = pheno[which(pheno$childs_sex == "Female"),], 
+                                     family=gaussian(), 
+                                     q=4) 
+      
+       df = data.frame(cell = outcome_list[i], estimate = q_gcomp[["psi"]], p.value = q_gcomp[["pval"]][2])
+  mixture_cells_f = rbind(mixture_cells_f, df)
+   }
+```
+
+##Sheet 3 of xlsx
+```{r}
+sheet3 = createSheet(wb, "Sheet3")
+xlsx.addHeader(wb, sheet3, value = "Cell Type Proportions~PFAS mixture", level = 2, color = "black")
+xlsx.addTable(wb, sheet3, mixture_cells)
+xlsx.addHeader(wb, sheet3, value = "Sex Stratified Cell Type Proportions~PFAS mixture", level = 2, color = "black")
+xlsx.addParagraph(wb, sheet3, value = "Male", colSpan = 1, rowSpan = 1, fontSize = 13, isBold = T)
+xlsx.addTable(wb, sheet3, mixture_cells_m)
+xlsx.addParagraph(wb, sheet3, value = "Female", colSpan = 1, rowSpan = 1, fontSize = 13, isBold = T)
+xlsx.addTable(wb, sheet3, mixture_cells_f)
+#saveWorkbook(wb, filename)
+#xlsx.openFile(filename)
+```
+
+#creating a data frame of  stratified mixture results of each outcome variable 
+```{r}
+#"Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast"
+results = data.frame()
+outcome_list <- c("Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
+ for(sex in c("Male", "Female")){
+   for ( i in 1:length(outcome_list)){
+    mod1.formula <- as.formula(paste0(outcome_list[i], "~official_enroll_category", 
+                                       "+mom_age_at_birth",
+                                       "+gest_age_in_weeks_edd",
+                                       "+mom_education", # cell mix  
+                                       "+PFOS",  "+PFNA", "+PFHxS",  "+PFDA", "+PFOA"))
+      q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                         # pfas 
+                                     expnms= c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"),
+                                     dat = pheno[which(pheno$childs_sex == sex),], 
+                                     family=gaussian(), 
+                                     q=4) 
+    
+    
+    # Output results from mixture 
+    psi<-round(q_gcomp$psi,4) # extract overall mixture estimate
+    # pvals and adjust it
+    pval <- q_gcomp[["pval"]][[2]]
+    # 95%ci
+    psi.ci.ll<-round(q_gcomp$ci.coef,5)[2] #extract CI for mixture
+    psi.ci.ul<-round(q_gcomp$ci.coef,5)[4] #extract CI for mixture
+    
+    # figure 1.  heatmap for plot(qgcomp)
+    # use weights from
+    weights = c(q_gcomp[["pos.weights"]], -q_gcomp[["neg.weights"]])
+    weights = data.frame(t(weights))
+    weights <- weights[, c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS")]
+    
+    # figure 2. heatmap
+    pos.psi<-round(q_gcomp$pos.psi,5) #extract sum of positive weights for mixture
+    neg.psi<-round(q_gcomp$neg.psi,5) #extract sum of negative weights for mixture
+    
+    
+    df = data.frame( dependent_variable = outcome_list[i], 
+                      psi = psi, 
+                      psi.ci.ll = psi.ci.ll, 
+                      psi.ci.ul = psi.ci.ul, 
+                      pval = pval,
+                      pos.psi=  pos.psi,
+                      neg.psi=  neg.psi,
+                      PFOS =  weights$PFOS,
+                      PFNA =  weights$PFHxS,
+                      PFHxS =  weights$PFHxS,
+                      PFDA =   weights$PFDA,
+                      PFOA=  weights$PFOA,
+                      sex = sex)
+    results = rbind(results, df)
+}
+
+}
+
+```
+
+#using data from above to create heat map 
+```{r}
+plot_qgcomp_pca_heatmap <- gather(results, key="pfas", value="weights", 8:12)
+plot_qgcomp_pca_heatmap$weights <- round(plot_qgcomp_pca_heatmap$weights, 2)
+
+myPalette <- colorRampPalette(rev(RColorBrewer::brewer.pal(11, "PuOr")))
+
+
+ggplot(plot_qgcomp_pca_heatmap , aes( 
+  #y = reorder(paste0(cpgs), psi),
+  y = reorder(dependent_variable, psi), # reorder cpgs based on size of effect estimates, and add chr, gene and annotoations to y axis as labels
+  fill = weights, color = weights, 
+  x = pfas)) +
+  geom_tile() +
+  scale_colour_gradientn(colours = myPalette(100)) +
+  scale_fill_gradientn(colours = myPalette(100)) +
+  labs(y = "Dependent Variable", 
+       x = "", fill = "Weights", color= "Weights") +
+  theme_bw() +
+    facet_grid(~ sex, scales = "free_y") +
+ 
+  theme(panel.border = element_blank(), 
+        legend.position="top",
+        axis.text.x = element_text(angle= 0), 
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size=11, face="bold", colour = "black"),
+        axis.title.y = element_text(size=11, face="bold", colour = "black"))
+
+
+```
+#forest plot of data frame of stratified analysis 
+```{r}
+library(forestplot)
+ggplot(plot_qgcomp_pca_heatmap,
+                        aes(x = psi, xmin = psi.ci.ll, xmax = psi.ci.ul,
+                            y = dependent_variable)) +
+  geom_vline(xintercept = 0, linetype = "longdash", position=position_dodge(width = 0.5)) +
+  geom_errorbarh(height = 0.2, lwd=1.05, position=position_dodge(width = 0.5)) +
+  geom_point(size = 2, shape = "circle", stroke = 0.5, position=position_dodge(width = 0.5)) +
+  # xlim(c(-2, 2))+
+  # geom_text(aes(y=as.double(Beta), label=as.double(Beta)), 
+  #           position = position_dodge2(width=4), vjust = -10) +
+  #  Un-comment the above line to check the effect estimates. The colors and effect estimates should match up with the tab_model() estimates from above.
+  xlab("Effect Estimate (95% CI)") +
+  ylab(" ")  +
+  facet_wrap(~sex) + #strip.position="left", nrow=72, scales = "free_y")+
+  theme_bw() +theme(panel.border = element_blank(), legend.position="top", 
+                    axis.title.x = element_text(size=9, face="bold", colour = "black"), 
+                    axis.text.y = element_text(size=9, face="bold", colour = "black")) #  For bold axis, include the following in theme(): axis.title.x = element_text(size=9, face="bold", colour = "black"), axis.text.y = element_text(size=9, face="bold", colour = "black")
+
+```
+
+
+#GAA ~ cell type proportion adjusted for covariates
+```{r}
+GAA_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("CPC_lm_residuals~", cell, "+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category + childs_sex"), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+  GAA_df = rbind(GAA_df, df)
+}
+
+GAA_df
+```
+
+#GA ~ cell type proportion adjusted for covariates 
+```{r}
+GA_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("gest_age_in_weeks_edd~", cell, "+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category + childs_sex"), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+  GA_df = rbind(GA_df, df)
+}
+
+GA_df
+```
+##Sheet 4 of xlsx
+```{r}
+sheet4 = createSheet(wb, "Sheet4")
+xlsx.addHeader(wb, sheet4, value = "GAA ~ Individual Cell Type Proportions ", level = 2, color = "black")
+xlsx.addParagraph(wb, sheet4, value = covariates, colSpan = 6, rowSpan = 3, fontSize = 13, isBold = T)
+xlsx.addTable(wb, sheet4, GAA_df)
+xlsx.addHeader(wb, sheet4, value = "GA ~ Individual Cell Type Proportions", level = 2, color = "black")
+xlsx.addTable(wb, sheet4, GA_df)
+#saveWorkbook(wb, filename)
+#xlsx.openFile(filename)
+```
+
+
+```{r}
+PFAS_bw_lm = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("birth_wt_kg~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category "), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_bw_lm = rbind(PFAS_bw_lm, df)
+}
+
+PFAS_bw_lm
+```
+
+```{r}
+PFAS_bl_lm = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("birth_len_cm~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category "), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_bl_lm = rbind(PFAS_bl_lm, df)
+}
+
+PFAS_bl_lm
+```
+
+```{r}
+mixture_BL = qgcomp( birth_len_cm~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+mixture_BL = data.frame(estimate =  mixture_BL[["psi"]], p.value = mixture_BL[["pval"]][2])
+```
+
+```{r}
+mixture_BW = qgcomp(birth_wt_kg~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+mixture_BW = data.frame(estimate =  mixture_BW[["psi"]], p.value = mixture_BW[["pval"]][2])
+```
+##Birthlength and each cell type 
+**Birth length was not associated with any cell type **
+```{r}
+BL_cell_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("birth_len_cm~", cell, "+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category + childs_sex"), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+ BL_cell_df = rbind(BL_cell_df, df)
+}
+
+BL_cell_df
+```
+##Birth weight and each cell type 
+**Birth weight was not associated with any cell type **
+```{r}
+BW_cell_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("birth_wt_kg~", cell, "+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category + childs_sex"), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+ BW_cell_df = rbind(BW_cell_df, df)
+}
+
+BW_cell_df
+```
+
+
+#Sheet 5 of xlsx 
+```{r}
+sheet5 = createSheet(wb, "Sheet5")
+xlsx.addHeader(wb, sheet5, value = "Birth Outcomes and PFAS ", level = 1, color = "black", underline = 2)
+xlsx.addHeader(wb, sheet5, value = "Birth Weight~ Individual PFAS", level = 2, color = "black")
+xlsx.addParagraph(wb, sheet5, value = covariates, colSpan = 6, rowSpan = 3, fontSize = 13, isBold = T)
+xlsx.addTable(wb, sheet5, PFAS_bw_lm )
+xlsx.addHeader(wb, sheet5, value = "Birth Length~ Individual PFAS", level = 2, color = "black")
+xlsx.addTable(wb, sheet5, GA_df)
+xlsx.addHeader(wb, sheet5, value = "Birth Weight and PFAS Mixture", level = 2, color = "black")
+xlsx.addTable(wb, sheet5, mixture_BW )
+xlsx.addHeader(wb, sheet5, value = "Birth Length and PFAS Mixture", level = 2, color = "black")
+xlsx.addTable(wb, sheet5, mixture_BL )
+#saveWorkbook(wb, filename)
+#xlsx.openFile(filename)
+```
+
+
+#Sheet 6 of xlsx 
+```{r}
+sheet6 = createSheet(wb, "Sheet6")
+xlsx.addHeader(wb, sheet6, value = "Birth Outcomes and GAA ", level = 1, color = "black", underline = 2)
+xlsx.addParagraph(wb, sheet6, value = covariates, colSpan = 6, rowSpan = 3, fontSize = 13, isBold = T)
+xlsx.addHeader(wb, sheet6, value = "Birth Weight~ GAA", level = 2, color = "black")
+xlsx.addTable(wb, sheet6, BW_GAA)
+xlsx.addHeader(wb, sheet6, value = "Birth Length ~ GAA", level = 2, color = "black")
+xlsx.addTable(wb, sheet6, BL_GAA )
+xlsx.addHeader(wb, sheet6, value = "Birth Length~GAA Sex Stratified and Interaction", level = 2, color = "black")
+xlsx.addTable(wb, sheet6, result_table)
+xlsx.addHeader(wb, sheet6, value = "Birth Weight~GAA Sex Stratified and Interaction", level = 2, color = "black")
+xlsx.addTable(wb, sheet6, BW)
+#saveWorkbook(wb, filename)
+#xlsx.openFile(filename)
+```
+
+```{r}
+BW_GAA <- data.frame(
+  Dependent_Variable = c("GA", "GAA"),
+  Estimate = NA,
+  P_Value = NA
+)
+
+# Model for GA
+model_ga <- lm(birth_wt_kg ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno)
+summary_ga <- summary(model_ga)
+BW_GAA$Estimate[1] <- coef(summary_ga)["CPC_lm_residuals", "Estimate"]
+BW_GAA$P_Value[1] <- coef(summary_ga)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Model for GAA
+model_gaa <- lm(birth_wt_kg ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno)
+summary_gaa <- summary(model_gaa)
+BW_GAA$Estimate[2] <- coef(summary_gaa)["CPC_lm_residuals", "Estimate"]
+BW_GAA$P_Value[2] <- coef(summary_gaa)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Print the result table
+print(BW_GAA)
+```
+
+```{r}
+# Create an empty data frame to store results
+BL_GAA <- data.frame(
+  Dependent_Variable = c("GA", "GAA"),
+  Estimate = NA,
+  P_Value = NA
+)
+
+# Model for GA
+model_ga <- lm(birth_len_cm ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno)
+summary_ga <- summary(model_ga)
+BL_GAA$Estimate[1] <- coef(summary_ga)["CPC_lm_residuals", "Estimate"]
+BL_GAA$P_Value[1] <- coef(summary_ga)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Model for GAA
+model_gaa <- lm(birth_len_cm ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno)
+summary_gaa <- summary(model_gaa)
+BL_GAA$Estimate[2] <- coef(summary_gaa)["CPC_lm_residuals", "Estimate"]
+BL_GAA$P_Value[2] <- coef(summary_gaa)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Print the result table
+print(BL_GAA)
+
+```
+
+
+```{r}
+# Create an empty data frame to store results
+result_table <- data.frame(
+  Row = c("Male", "Female", "Interaction"),
+  Estimate = NA,
+  P_Value = NA
+)
+
+# Model for Male
+model_male <- lm(birth_len_cm ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno[which(pheno$childs_sex == "Male"),])
+summary_male <- summary(model_male)
+result_table$Estimate[1] <- coef(summary_male)["CPC_lm_residuals", "Estimate"]
+result_table$P_Value[1] <- coef(summary_male)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Model for Female
+model_female <- lm(birth_len_cm ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno[which(pheno$childs_sex == "Female"),])
+summary_female <- summary(model_female)
+result_table$Estimate[2] <- coef(summary_female)["CPC_lm_residuals", "Estimate"]
+result_table$P_Value[2] <- coef(summary_female)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Model for Interaction
+model_interaction <- lm(birth_len_cm ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + childs_sex + CPC_lm_residuals:childs_sex, data = pheno)
+summary_interaction <- summary(model_interaction)
+result_table$Estimate[3] <- summary_interaction$coefficients["CPC_lm_residuals:childs_sexMale","Estimate"]
+result_table$P_Value[3] <- coef(summary_interaction)["CPC_lm_residuals:childs_sexMale", "Pr(>|t|)"]
+
+# Print the result table
+print(result_table)
+
+```
+
+
+```{r}
+# Create an empty data frame to store results
+BW <- data.frame(
+  Row = c("Male", "Female", "Interaction"),
+  Estimate = NA,
+  P_Value = NA
+)
+
+# Model for Male
+model_male <- lm(birth_wt_kg~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno[which(pheno$childs_sex == "Male"),])
+summary_male <- summary(model_male)
+BW$Estimate[1] <- coef(summary_male)["CPC_lm_residuals", "Estimate"]
+BW$P_Value[1] <- coef(summary_male)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Model for Female
+model_female <- lm(birth_wt_kg ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno[which(pheno$childs_sex == "Female"),])
+summary_female <- summary(model_female)
+BW$Estimate[2] <- coef(summary_female)["CPC_lm_residuals", "Estimate"]
+BW$P_Value[2] <- coef(summary_female)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Model for Interaction
+model_interaction <- lm(birth_wt_kg~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + childs_sex + CPC_lm_residuals:childs_sex, data = pheno)
+summary_interaction <- summary(model_interaction)
+BW$Estimate[3] <- summary_interaction$coefficients["CPC_lm_residuals:childs_sexMale","Estimate"]
+BW$P_Value[3] <- coef(summary_interaction)["CPC_lm_residuals:childs_sexMale", "Pr(>|t|)"]
+
+# Print the result table
+print(BW)
+
+```
+
+
+```{r}
+library(zscorer)
+library(tidyverse)
+zscorer_dat <- tibble(
+  id = pheno$participant_id,
+  sex = ifelse(pheno$childs_sex == "Male",1, 2),
+   weight_kg = pheno$birth_wt_kg,
+  length_cm = pheno$birth_len_cm,
+  age_days = pheno$gest_age_in_weeks_edd # can calculate from DOB and the date of the visit
+)
+
+zscorer_calcs <- zscorer_dat %>%
+ 
+  # Add WFL z-score
+  zscorer::addWGSR(
+    data = .,
+    sex = "sex",
+    firstPart = "weight_kg",
+    secondPart = "length_cm",
+    index = "wfl"
+  ) %>%
+  
+  # Add WFA z-score
+  zscorer::addWGSR(
+    data = .,
+    sex = "sex",
+    firstPart = "weight_kg", # change to "length_cm" for "lfa"
+    secondPart = "age_days",
+    index = "wfa" # "lfa" for length
+  )
+
+pheno$wflz = zscorer_calcs$wflz
+
+pheno$wfaz = zscorer_calcs$wfaz
+```
+
+#Sheet 7 of xlsx 
+```{r}
+sheet7 = createSheet(wb, "Sheet7")
+xlsx.addHeader(wb, sheet7, value = "Z score of Birth Weight and Birth Length ", level = 1, color = "black", underline = 2)
+xlsx.addParagraph(wb, sheet7, value = covariates, colSpan = 6, rowSpan = 3, fontSize = 13, isBold = T)
+xlsx.addParagraph(wb, sheet7, value = "weight for length (wfl) and weight for age (wfa)", colSpan = 5, rowSpan = 5, fontSize = 13, isBold = T)
+xlsx.addHeader(wb, sheet7, value = "wfl/wfa ~ GAA", level = 2, color = "black")
+xlsx.addTable(wb, sheet7, wfl_GAA )
+xlsx.addHeader(wb, sheet7, value = "wfaz~GAA Sex Stratified and Interaction", level = 2, color = "black")
+xlsx.addTable(wb, sheet7, wfaz)
+xlsx.addHeader(wb, sheet7, value = "wflz~GAA Sex Stratified and Interaction", level = 2, color = "black")
+xlsx.addTable(wb, sheet7, wflz)
+xlsx.addHeader(wb, sheet7, value = "wflz/wfaz~PFAS mixture", level = 2, color = "black")
+xlsx.addTable(wb, sheet7, mixture)
+xlsx.addHeader(wb, sheet7, value = "wflz~ individual PFAS", level = 2, color = "black")
+xlsx.addTable(wb, sheet7, PFAS_wfl_lm)
+xlsx.addHeader(wb, sheet7, value = "wfaz~ individual PFAS", level = 2, color = "black")
+xlsx.addTable(wb, sheet7, PFAS_wfa_lm)
+saveWorkbook(wb, filename)
+xlsx.openFile(filename)
+```
+
+```{r}
+
+# Create an empty data frame to store results
+ wfl_GAA <- data.frame(
+  Independent_Variable = c("wflz", "wfaz"),
+  Estimate = NA,
+  P_Value = NA
+)
+
+# Model for GA
+model_ga <- lm(wflz ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno)
+summary_ga <- summary(model_ga)
+wfl_GAA$Estimate[1] <- coef(summary_ga)["CPC_lm_residuals", "Estimate"]
+wfl_GAA$P_Value[1] <- coef(summary_ga)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Model for GAA
+model_gaa <- lm(wfaz ~ CPC_lm_residuals + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category, data = pheno)
+summary_gaa <- summary(model_gaa)
+wfl_GAA$Estimate[2] <- coef(summary_gaa)["CPC_lm_residuals", "Estimate"]
+wfl_GAA$P_Value[2] <- coef(summary_gaa)["CPC_lm_residuals", "Pr(>|t|)"]
+
+# Print the result table
+print(wfl_GAA)
+
+```
+
+```{r}
+wfaz <- data.frame(
+  Row = c("Male", "Female", "Interaction"),
+  Estimate = NA,
+  P_Value = NA
+)
+
+summary_interaction = summary(lm(wfaz ~ CPC_lm_residuals+ mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + childs_sex + CPC_lm_residuals:childs_sex, data = pheno))
+wfaz$Estimate[3] <- summary_interaction$coefficients["CPC_lm_residuals:childs_sexMale","Estimate"]
+wfaz$P_Value[3] <- coef(summary_interaction)["CPC_lm_residuals:childs_sexMale", "Pr(>|t|)"]
+
+summary_male <- summary(lm(wfaz ~ CPC_lm_residuals+ mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category , data = pheno[which(pheno$childs_sex == "Male"), ]))
+wfaz$Estimate[1] <- coef(summary_male)["CPC_lm_residuals", "Estimate"]
+wfaz$P_Value[1] <- coef(summary_male)["CPC_lm_residuals", "Pr(>|t|)"]
+
+summary_female <- summary(lm(wfaz ~ CPC_lm_residuals+ mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category , data = pheno[which(pheno$childs_sex == "Female"), ]))
+wfaz$Estimate[2] <- coef(summary_female)["CPC_lm_residuals", "Estimate"]
+wfaz$P_Value[2] <- coef(summary_female)["CPC_lm_residuals", "Pr(>|t|)"]
+```
+
+```{r}
+wflz <- data.frame(
+  Row = c("Male", "Female", "Interaction"),
+  Estimate = NA,
+  P_Value = NA
+)
+
+summary_interaction = summary(lm(wflz ~ CPC_lm_residuals+ mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + childs_sex + CPC_lm_residuals:childs_sex, data = pheno))
+wflz$Estimate[3] <- summary_interaction$coefficients["CPC_lm_residuals:childs_sexMale","Estimate"]
+wflz$P_Value[3] <- coef(summary_interaction)["CPC_lm_residuals:childs_sexMale", "Pr(>|t|)"]
+
+summary_male <- summary(lm(wflz ~ CPC_lm_residuals+ mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category , data = pheno[which(pheno$childs_sex == "Male"), ]))
+wflz$Estimate[1] <- coef(summary_male)["CPC_lm_residuals", "Estimate"]
+wflz$P_Value[1] <- coef(summary_male)["CPC_lm_residuals", "Pr(>|t|)"]
+
+summary_female <- summary(lm(wflz~ CPC_lm_residuals+ mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category , data = pheno[which(pheno$childs_sex == "Female"), ]))
+wflz$Estimate[2] <- coef(summary_female)["CPC_lm_residuals", "Estimate"]
+wflz$P_Value[2] <- coef(summary_female)["CPC_lm_residuals", "Pr(>|t|)"]
+```
+
+```{r}
+ 
+mixture_wfl= qgcomp( wflz ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+mixture_wfa= qgcomp( wfaz ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+mixture = data.frame(dependent_variable = c("wflz", "wfaz"), estimate =  c(mixture_wfl[["psi"]], mixture_wfa[["psi"]]), p.value = c(mixture_wfl[["pval"]][2], mixture_wfa[["pval"]][2]))
+```
+
+```{r}
+PFAS_wfl_lm = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("wflz~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category "), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_wfl_lm = rbind(PFAS_wfl_lm, df)
+}
+
+PFAS_wfl_lm
+```
+
+```{r}
+PFAS_wfa_lm = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("wfaz~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category "), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_wfa_lm = rbind(PFAS_wfa_lm, df)
+}
+
+PFAS_wfa_lm
+```
