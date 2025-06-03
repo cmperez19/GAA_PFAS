@@ -142,16 +142,91 @@ knitr::include_graphics("/Users/cynthiaperez/Downloads/Gennings_WQS_lecture_2023
 
 ```{r}
 PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS")
-results2i <- gwqs(formula = CPC_lm_residuals~ wqs*childs_sex + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category, bint_cont_pos = TRUE, mix_name = PFASp, data = pheno, q = 10, validation = 0, b = 20, b1_pos = T, plan_strategy = "multicore", family = "gaussian", seed = 10)
-
+results2i <- gwqs(formula = CPC_lm_residuals~ wqs+ mom_age_at_birth + mom_education +  childs_sex + official_enroll_category+ gwg_kg, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20,  plan_strategy = "multicore", family = "gaussian", seed = 10, b1_pos = T)
 summary(results2i)
+confint(results2i, level=0.95)
+results2i <- gwqs(formula = CPC_lm_residuals~ wqs+ mom_age_at_birth + mom_education +  childs_sex + official_enroll_category+ gwg_kg, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20,  plan_strategy = "multicore", family = "gaussian", seed = 10, b1_pos = F)
+summary(results2i)
+confint(results2i, level=0.95)
 ```
+
 ```{r}
 PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS")
-results2i <- gwqs(formula = CPC_lm_residuals~ wqs + mom_age_at_birth + mom_education + MomBMI_36wks  + MomBMI_10wks + official_enroll_category, bint_cont_pos = TRUE, mix_name = PFASp, data = pheno[which(pheno$childs_sex == 1),], q = 10, validation = 0, b = 20, b1_pos = T, plan_strategy = "multicore", family = "gaussian", seed = 10)
+results2int <- gwqs(formula = CPC_lm_residuals~ wqs*childs_sex + mom_age_at_birth + mom_education +  childs_sex + official_enroll_category+ gwg_kg, bint_cat_pos= T, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(results2int)
+confint(results2int, level=0.95)
 
-summary(results2i)
+results2int <- gwqs(formula = CPC_lm_residuals~ wqs*childs_sex + mom_age_at_birth + mom_education +  childs_sex + official_enroll_category+ gwg_kg, bint_cat_pos=FALSE, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(results2int)
+confint(results2int, level=0.95)
+
 ```
+
+```{r}
+PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS")
+x = gwqs(formula = Syncytiotrophoblast ~ wqs + mom_age_at_birth + mom_education  + gest_age_in_weeks_edd + official_enroll_category  + gwg_kg, mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Male"),], q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10,   b1_pos = F)
+summary(x)
+confint(x, level=0.95)
+
+
+
+PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS")
+x = gwqs(formula = Syncytiotrophoblast ~ wqs + mom_age_at_birth + mom_education  + gest_age_in_weeks_edd + official_enroll_category  + gwg_kg, mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Female"),], q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10,   b1_pos = T)
+summary(x)
+confint(x, level=0.95)
+
+
+x = gwqs(formula = Syncytiotrophoblast ~ wqs + mom_age_at_birth + mom_education  + gest_age_in_weeks_edd + official_enroll_category  + childs_sex + gwg_kg, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10,   b1_pos = T)
+summary(x)
+confint(x, level=0.95)
+
+x = gwqs(formula = Syncytiotrophoblast ~ wqs + mom_age_at_birth + mom_education  + gest_age_in_weeks_edd + official_enroll_category  + childs_sex + gwg_kg, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10,   b1_pos = F)
+summary(x)
+confint(x, level=0.95)
+
+results2int <- gwqs(formula = Syncytiotrophoblast~ wqs*childs_sex + mom_age_at_birth + mom_education +  childs_sex + official_enroll_category+ gwg_kg, bint_cat_pos= T, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(results2int)
+confint(results2int, level=0.95)
+
+results2int <- gwqs(formula = Syncytiotrophoblast~ wqs*childs_sex + mom_age_at_birth + mom_education +  childs_sex + official_enroll_category+ gwg_kg, bint_cat_pos=FALSE, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(results2int)
+confint(results2int, level=0.95)
+
+
+x = gwqs(formula = Syncytiotrophoblast ~ wqs + mom_age_at_birth + mom_education  + gest_age_in_weeks_edd + official_enroll_category  + gwg_kg, mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Male"),], q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10,   b1_pos = T)
+summary(x)
+confint(x, level=0.95)
+
+PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS")
+x = gwqs(formula = Syncytiotrophoblast ~ wqs + mom_age_at_birth + mom_education  + gest_age_in_weeks_edd + official_enroll_category  + gwg_kg, mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Female"),], q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10,   b1_pos = F)
+summary(x)
+confint(x, level=0.95)
+
+```
+
+
+```{r}
+
+resultsm <- gwqs(formula = CPC_lm_residuals~  wqs + mom_age_at_birth + mom_education  + official_enroll_category  + gwg_kg, mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Male"),], q = 4, validation = 0, b = 20, b1_pos = F, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(resultsm)
+confint(resultsm)
+
+
+
+resultsf <- gwqs(formula = CPC_lm_residuals~ wqs + mom_age_at_birth + mom_education  + official_enroll_category  + gwg_kg,  mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Female"),], q = 4, validation = 0, b = 20, b1_pos = T, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(resultsf)
+confint(resultsf)
+
+resultsf <- gwqs(formula = CPC_lm_residuals~ wqs + mom_age_at_birth + mom_education  + official_enroll_category  + gwg_kg,  mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Female"),], q = 4, validation = 0, b = 20, b1_pos = F, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(resultsf)
+confint(resultsf)
+
+resultsm <- gwqs(formula = CPC_lm_residuals~  wqs + mom_age_at_birth + mom_education  + official_enroll_category  + gwg_kg, mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Male"),], q = 4, validation = 0, b = 20, b1_pos = T, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(resultsm)
+confint(resultsm)
+
+```
+
 
 
 ```{r}
@@ -175,4 +250,45 @@ qfitemm <- qgcomp.emm.noboot(f= CPC_lm_residuals ~ PFOA + PFHxS + PFNA + PFDA + 
            data=pheno, q=4, 
            family=gaussian())
 ```
+
+
+```{r}
+ qgcomp.emm.noboot(f= Endothelial ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category,
+           emmvar="childs_sex", 
+           expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), 
+           data=pheno, q=4, 
+           family=gaussian())
+ 
+  qgcomp.emm.noboot(f= Stromal ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category,
+           emmvar="childs_sex", 
+           expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), 
+           data=pheno, q=4, 
+           family=gaussian())
+  
+  qgcomp.emm.noboot(f= Hofbauer ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category,
+           emmvar="childs_sex", 
+           expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), 
+           data=pheno, q=4, 
+           family=gaussian())
+  
+    qgcomp.emm.noboot(f= nRBC ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category,
+           emmvar="childs_sex", 
+           expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), 
+           data=pheno, q=4, 
+           family=gaussian())
+    
+        qgcomp.emm.noboot(f= Syncytiotrophoblast ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category,
+           emmvar="childs_sex", 
+           expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), 
+           data=pheno, q=4, 
+           family=gaussian())
+```
+
+```{r}
+PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS")
+results2i <- gwqs(formula = Syncytiotrophoblast~ wqs + mom_age_at_birth + mom_education + MomBMI_36wks  + MomBMI_10wks + official_enroll_category, bint_cont_pos = TRUE, mix_name = PFASp, data = pheno[which(pheno$childs_sex == "Male"),], q = 10, validation = 0, b = 20, b1_pos = F, plan_strategy = "multicore", family = "gaussian", seed = 10)
+
+summary(results2i)
+```
+
 

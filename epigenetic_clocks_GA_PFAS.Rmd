@@ -1,0 +1,505 @@
+---
+title: "epigenetic_clocks_GA"
+output: html_document
+date: '11-27-2023'
+---
+
+```{r}
+setwd("~/GitHub/Planet_Epigenetic_GA_Clocks")
+library(tidyverse)
+library(planet)
+library(qgcomp)
+
+load("2_BMIQ_Adjsuted.RData")
+load("ALLBETAS.FunNormBMIQ.RData")
+colnames(FunNorm.BMIQ.ALL) = pd$Sample_Name
+
+load("/Users/cynthiaperez/WGCNA_PFAS/log_PFAS_pheno.Rdata")
+## Drop the two samples that weren't run (G-155 & G-157):
+# Get the intersection of column names to keep
+cols_to_keep <- intersect(colnames(FunNorm.BMIQ.ALL), rownames(log_pfas))
+
+# Subset FunNorm.BMIQ.ALL to keep only the columns present in cols_to_keep
+FunNorm.BMIQ.ALL <- FunNorm.BMIQ.ALL[, cols_to_keep]
+
+pheno <- pheno[colnames(FunNorm.BMIQ.ALL),]
+#rownames(log_pfas) == rownames(pheno) are now true after this next line 
+log_pfas <- log_pfas[colnames(FunNorm.BMIQ.ALL),]
+
+#
+PFASp = c("L-PFOA","PFHxS","PFNA","PFDA","s-PFOS")
+pheno = cbind(pheno, log_pfas[,PFASp])
+colnames(pheno)[50] = "PFOA"
+colnames(pheno)[54] = "PFOS"
+```
+
+```{r}
+pheno$RPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "RPC")
+pheno$CPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "CPC")
+pheno$RRPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "RRPC")
+```
+
+```{r}
+pheno$RPC_lm_residuals = summary(lm(RPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$RRPC_lm_residuals = summary(lm(RRPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$CPC_lm_residuals= summary(lm(CPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+```
+
+
+#Comparing my results with Todd's 
+```{r}
+plot(pheno$RPC_Age, pheno$RPC_clock)
+plot(pheno$RRPC_Age, pheno$RRPC_clock)
+plot(pheno$CPC_Age, pheno$CPC_clock)
+```
+
+#correlation test between gestation and clocks
+# Correlation quantifies the strength of the linear relationship between a pair of variables, whereas regression expresses the relationship in the form of an equation
+```{r}
+cor.test(pheno$gest_age_in_weeks_edd, pheno$CPC_clock)
+cor.test(pheno$gest_age_in_weeks_edd, pheno$RPC_clock)
+cor.test(pheno$gest_age_in_weeks_edd, pheno$RRPC_clock)
+```
+
+
+
+#PFAS and CPC clock
+```{r}
+
+
+
+PFAS_cpc_lm = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ Trophoblasts + Stromal + Hofbauer + Endothelial + nRBC + Syncytiotrophoblast"), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm = rbind(PFAS_cpc_lm, df)
+}
+
+PFAS_cpc_lm
+```
+
+
+
+```{r}
+
+PFAS_cpc_lm = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category "), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm = rbind(PFAS_cpc_lm, df)
+}
+
+PFAS_cpc_lm
+
+```
+
+```{r}
+qgcomp(CPC_lm_residuals ~ PFOA + PFHxS + PFNA + PFDA + PFOS + Trophoblasts + Stromal + Hofbauer + Endothelial + nRBC + Syncytiotrophoblast, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+```
+
+
+
+#CPC outcome with interaction between sex and PFAS 
+```{r}
+PFAS_cpc_lm = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + childs_sex:",i), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[10,4]
+  estimate <- coef(model)[10]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm = rbind(PFAS_cpc_lm, df)
+}
+
+PFAS_cpc_lm
+```
+
+#qgcomp stratified by males and females 
+```{r}
+m = qgcomp(CPC_lm_residuals ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Male"),], q = 4)
+
+print("male")
+print(m)
+
+
+#plot(m)
+
+f = qgcomp(CPC_lm_residuals ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Female"),], q = 4)
+
+print("female")
+print(f)
+#plot(f) 
+
+
+forest_data <- data.frame(
+  Sex = c("Male", "Female"),
+  EffectSize = c(m$coef[2], f$coef[2]), # Effect sizes
+  LowerCI = c(m$ci[1],f$ci[1]), # Lower bounds of CIs
+  UpperCI = c(m$ci[2], f$ci[2]) # Upper bounds of CIs
+)
+
+ggplot(forest_data, aes(x = EffectSize, y = Sex)) +
+  geom_point() + # Points for effect sizes
+  geom_errorbarh(aes(xmin = LowerCI, xmax = UpperCI), height = 0) + # Error bars for CIs
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") + # Add a vertical line at no effect
+  labs(title = "Forest Plot for GAA", x = "Effect Size", y = "Sex") +
+  theme_minimal() 
+```
+
+```{r}
+qgcomp(Trophoblasts ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+```
+
+
+#Trophoblast stratification qgcomp analysis 
+```{r}
+ #qgcomp(Trophoblasts ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+
+m = qgcomp(Trophoblasts ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Male"),], q = 4)
+
+print("male")
+m
+
+#plot(m)
+
+f = qgcomp(Trophoblasts ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Female"),], q = 4)
+
+#plot(f)
+print("female")
+f
+
+forest_data <- data.frame(
+  Sex = c("Male", "Female"),
+  EffectSize = c(m$coef[2], f$coef[2]), # Effect sizes
+  LowerCI = c(m$ci[1],f$ci[1]), # Lower bounds of CIs
+  UpperCI = c(m$ci[2], f$ci[2]) # Upper bounds of CIs
+)
+
+ggplot(forest_data, aes(x = EffectSize, y = Sex)) +
+  geom_point() + # Points for effect sizes
+  geom_errorbarh(aes(xmin = LowerCI, xmax = UpperCI), height = 0) + # Error bars for CIs
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") + # Add a vertical line at no effect
+  labs(title = "Forest Plot for Trophoblasts", x = "Effect Size", y = "Sex") +
+  theme_minimal() 
+```
+
+```{r}
+ #qgcomp(Stromal ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+qgcomp(Stromal ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Male"),], q = 4)
+
+qgcomp(Stromal ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd , expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Female"),], q = 4)
+
+```
+
+```{r}
+#qgcomp(Hofbauer ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+qgcomp(Hofbauer ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Male"),], q = 4)
+
+qgcomp(Hofbauer ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Female"),], q = 4)
+```
+
+
+```{r}
+#qgcomp(Endothelial ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+qgcomp(Endothelial ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Male"),], q = 4)
+
+qgcomp(Endothelial ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Female"),], q = 4)
+
+```
+```{r}
+
+#qgcomp(nRBC ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+qgcomp(nRBC ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Male"),], q = 4)
+
+qgcomp(nRBC ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Female"),], q = 4)
+```
+
+```{r}
+
+
+#qgcomp(Syncytiotrophoblast ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks +  childs_sex + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
+
+
+qgcomp(Syncytiotrophoblast ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Male"),], q = 4)
+
+
+qgcomp(Syncytiotrophoblast ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  MomBMI_36wks + MomBMI_10wks + official_enroll_category + gest_age_in_weeks_edd, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno[which(pheno$childs_sex == "Female"),], q = 4)
+```
+
+
+
+
+
+
+```{r}
+
+PFAS_cpc_lm_m = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ Trophoblasts + Stromal + Hofbauer + Endothelial + nRBC + Syncytiotrophoblast"), data = pheno[which(pheno$childs_sex == "Male"),])
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm_m = rbind(PFAS_cpc_lm_m, df)
+}
+
+PFAS_cpc_lm_m
+```
+
+```{r}
+PFAS_cpc_lm_m = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category + Trophoblasts + Stromal + Hofbauer + Endothelial + nRBC + Syncytiotrophoblast "), data = pheno[which(pheno$childs_sex == "Male"),])
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm_m = rbind(PFAS_cpc_lm_m, df)
+}
+
+PFAS_cpc_lm_m
+```
+```{r}
+PFAS_cpc_lm_f = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ Trophoblasts + Stromal + Hofbauer + Endothelial + nRBC + Syncytiotrophoblast"), data = pheno[which(pheno$childs_sex == "Female"),])
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm_f = rbind(PFAS_cpc_lm_f, df)
+}
+
+PFAS_cpc_lm_f
+```
+```{r}
+PFAS_cpc_lm_f = data.frame()
+
+#pheno = pheno %>% filter(.$CPC_lm_residuals > -0.01)
+for (i in c("PFOA","PFHxS","PFNA","PFDA","PFOS")) {
+  model = lm(paste0("CPC_lm_residuals~", i,"+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category "), data = pheno[which(pheno$childs_sex == "Female"),])
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate,  PFAS = i)
+  PFAS_cpc_lm_f = rbind(PFAS_cpc_lm_f, df)
+}
+
+PFAS_cpc_lm_f
+```
+
+
+
+```{r}
+
+results = data.frame()
+outcome_list <- c("CPC_lm_residuals", "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
+ for(sex in c("Male", "Female")){
+   for ( i in 1:7){
+    mod1.formula <- as.formula(paste0(outcome_list[i], "~official_enroll_category", 
+                                       "+mom_age_at_birth",
+                                       "+gest_age_in_weeks_edd",
+                                       "+mom_education", # cell mix  
+                                       "+PFOS",  "+PFNA", "+PFHxS",  "+PFDA", "+PFOA"))
+      q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                         # pfas 
+                                     expnms= c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"),
+                                     dat = pheno[which(pheno$childs_sex == sex),], 
+                                     family=gaussian(), 
+                                     q=4) 
+    
+    
+    # Output results from mixture 
+    psi<-round(q_gcomp$psi,4) # extract overall mixture estimate
+    # pvals and adjust it
+    pval <- q_gcomp[["pval"]][[2]]
+    # 95%ci
+    psi.ci.ll<-round(q_gcomp$ci.coef,5)[2] #extract CI for mixture
+    psi.ci.ul<-round(q_gcomp$ci.coef,5)[4] #extract CI for mixture
+    
+    # figure 1.  heatmap for plot(qgcomp)
+    # use weights from
+    weights = c(q_gcomp[["pos.weights"]], -q_gcomp[["neg.weights"]])
+    weights = data.frame(t(weights))
+    weights <- weights[, c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS")]
+    
+    # figure 2. heatmap
+    pos.psi<-round(q_gcomp$pos.psi,5) #extract sum of positive weights for mixture
+    neg.psi<-round(q_gcomp$neg.psi,5) #extract sum of negative weights for mixture
+    
+    
+    df = data.frame( dependent_variable = outcome_list[i], 
+                      psi = psi, 
+                      psi.ci.ll = psi.ci.ll, 
+                      psi.ci.ul = psi.ci.ul, 
+                      pval = pval,
+                      pos.psi=  pos.psi,
+                      neg.psi=  neg.psi,
+                      PFOS =  weights$PFOS,
+                      PFNA =  weights$PFHxS,
+                      PFHxS =  weights$PFHxS,
+                      PFDA =   weights$PFDA,
+                      PFOA=  weights$PFOA,
+                      sex = sex)
+    results = rbind(results, df)
+}
+
+}
+
+```
+
+
+```{r}
+plot_qgcomp_pca_heatmap <- gather(results, key="pfas", value="weights", 8:12)
+plot_qgcomp_pca_heatmap$weights <- round(plot_qgcomp_pca_heatmap$weights, 2)
+
+myPalette <- colorRampPalette(rev(RColorBrewer::brewer.pal(11, "PuOr")))
+
+
+ggplot(plot_qgcomp_pca_heatmap , aes( 
+  #y = reorder(paste0(cpgs), psi),
+  y = reorder(dependent_variable, psi), # reorder cpgs based on size of effect estimates, and add chr, gene and annotoations to y axis as labels
+  fill = weights, color = weights, 
+  x = pfas)) +
+  geom_tile() +
+  scale_colour_gradientn(colours = myPalette(100)) +
+  scale_fill_gradientn(colours = myPalette(100)) +
+  labs(y = "Dependent Variable", 
+       x = "", fill = "Weights", color= "Weights") +
+  theme_bw() +
+    facet_grid(~ sex, scales = "free_y") +
+ 
+  theme(panel.border = element_blank(), 
+        legend.position="top",
+        axis.text.x = element_text(angle= 0), 
+        axis.text.y = element_text(size = 10),
+        axis.title.x = element_text(size=11, face="bold", colour = "black"),
+        axis.title.y = element_text(size=11, face="bold", colour = "black"))
+
+
+```
+
+
+```{r}
+library(forestplot)
+ggplot(plot_qgcomp_pca_heatmap,
+                        aes(x = psi, xmin = psi.ci.ll, xmax = psi.ci.ul,
+                            y = dependent_variable)) +
+  geom_vline(xintercept = 0, linetype = "longdash", position=position_dodge(width = 0.5)) +
+  geom_errorbarh(height = 0.2, lwd=1.05, position=position_dodge(width = 0.5)) +
+  geom_point(size = 2, shape = "circle", stroke = 0.5, position=position_dodge(width = 0.5)) +
+  # xlim(c(-2, 2))+
+  # geom_text(aes(y=as.double(Beta), label=as.double(Beta)), 
+  #           position = position_dodge2(width=4), vjust = -10) +
+  #  Un-comment the above line to check the effect estimates. The colors and effect estimates should match up with the tab_model() estimates from above.
+  xlab("Effect Estimate (95% CI)") +
+  ylab(" ")  +
+  facet_wrap(~sex) + #strip.position="left", nrow=72, scales = "free_y")+
+  theme_bw() +theme(panel.border = element_blank(), legend.position="top", 
+                    axis.title.x = element_text(size=9, face="bold", colour = "black"), 
+                    axis.text.y = element_text(size=9, face="bold", colour = "black")) #  For bold axis, include the following in theme(): axis.title.x = element_text(size=9, face="bold", colour = "black"), axis.text.y = element_text(size=9, face="bold", colour = "black")
+
+```
+
+
+```{r}
+
+GAA_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("CPC_lm_residuals~", cell), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+  GAA_df = rbind(GAA_df, df)
+}
+
+GAA_df
+```
+
+```{r}
+GA_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("gest_age_in_weeks_edd~", cell), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+  GA_df = rbind(GA_df, df)
+}
+
+GA_df
+```
+
+```{r}
+library(corrplot)
+M = cor(pheno[,c("Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast", "gest_age_in_weeks_edd", "CPC_lm_residuals")])
+corrplot(M, method = 'number')
+```
+
+```{r}
+GAA_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("CPC_lm_residuals~", cell, "+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category + childs_sex"), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+  GAA_df = rbind(GAA_df, df)
+}
+
+GAA_df
+```
+
+```{r}
+GAA_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("CPC_lm_residuals~", cell, "+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category + childs_sex + gest_age_in_weeks_edd"), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+  GAA_df = rbind(GAA_df, df)
+}
+
+GAA_df
+```
+```{r}
+GA_df = data.frame()
+for( cell in c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")){
+   model = lm(paste0("gest_age_in_weeks_edd~", cell, "+ mom_age_at_birth + mom_education + MomBMI_36wks +  MomBMI_10wks + official_enroll_category + childs_sex"), data = pheno)
+  lm_summary <- summary(model)
+  p_value <- lm_summary$coefficients[2,4]
+  estimate <- coef(model)[2]
+  df = data.frame(p.value = p_value, estimate = estimate, cell = cell)
+  GA_df = rbind(GA_df, df)
+}
+
+GA_df
+```
+

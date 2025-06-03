@@ -1,0 +1,103 @@
+```{r}
+load("/Users/cynthiaperez/GitHub/Placenta_RNAseq_WGCNA/april24_input.Rdata")
+library(planet)
+library(tidyverse)
+```
+
+
+```{r}
+load("/Users/cynthiaperez/GitHub/Placenta_RNAseq_WGCNA/april24_input.Rdata")
+load("2_BMIQ_Adjsuted.RData")
+load("ALLBETAS.FunNormBMIQ.RData")
+colnames(FunNorm.BMIQ.ALL) = pd$Sample_Name
+
+FunNorm.BMIQ.ALL = FunNorm.BMIQ.ALL[,row.names(pfas_df_cp)]
+pheno = pheno[row.names(pfas_df_cp),]
+pheno$RPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "RPC")
+pheno$CPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "CPC")
+pheno$RRPC_clock = predictAge(FunNorm.BMIQ.ALL, type = "RRPC")
+
+pheno$RPC_lm_residuals = summary(lm(RPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$RRPC_lm_residuals = summary(lm(RRPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$CPC_lm_residuals= summary(lm(CPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+
+cor.test(pheno$gest_age_in_weeks_edd, pheno$CPC_clock)
+cor.test(pheno$gest_age_in_weeks_edd, pheno$RPC_clock)
+cor.test(pheno$gest_age_in_weeks_edd, pheno$RRPC_clock)
+
+```
+
+covariates to adjust for maternal age at birth, maternal education level, pre-pregnancy BMI, gestational weight gain, and infant sex
+
+
+the phenotype profiles I have contain different information 
+```{r}
+
+PFASp = c("L-PFOA","PFHxS","PFNA","PFDA","s-PFOS","sum1", "sum2" )
+pfas_log2 = log2(pfas_df_cp[, PFASp])
+pfas_log2$ID = row.names(pfas_log2)
+
+colnames(pheno)[1] = "ID"
+merged_df <- left_join(pheno, pfas_log2, by = "ID")
+colnames(merged_df)[60] = "PFOS"
+colnames(merged_df)[56] = "PFOA"
+
+PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS","sum1", "sum2" )
+
+PFAS_rpc_lm = data.frame()
+
+
+for (i in seq_along(PFASp)) {
+  lm = summary(lm(paste0("RPC_lm_residuals~", PFASp[i],"+ Trophoblasts + Stromal + Hofbauer + Endothelial + nRBC + Syncytiotrophoblast + mom_education + MomBMI_10wks + MomBMI_36wks + child_sex + gest_age_in_weeks_edd + mom_age_at_birth"), data = merged_df))$coefficients[2,4] 
+   df = data.frame(p.value = lm, PFAS = PFASp[i])
+    PFAS_rpc_lm = rbind(PFAS_rpc_lm, df)
+}
+
+PFAS_rpc_lm
+```
+
+```{r}
+PFAS_cpc_lm = data.frame()
+
+
+for (i in seq_along(PFASp)) {
+  lm = summary(lm(paste0("CPC_lm_residuals~", PFASp[i],"+ Trophoblasts + Stromal + Hofbauer + Endothelial + nRBC + Syncytiotrophoblast + mom_education + MomBMI_10wks + MomBMI_36wks + child_sex + gest_age_in_weeks_edd + mom_age_at_birth"), data = merged_df))
+   df = data.frame(p.value = lm$coefficients[2,4] , PFAS = PFASp[i], estimate = lm$coefficients[2,1])
+    PFAS_cpc_lm = rbind(PFAS_cpc_lm, df)
+}
+
+PFAS_cpc_lm
+```
+
+#run a model where there are no adjustments 
+add everything to a word doc for epigenetic clocks and wgcna 
+```{r}
+PFASp = c("PFOA","PFHxS","PFNA","PFDA","PFOS","sum1", "sum2" )
+
+PFAS_rpc_lm_no_cov = data.frame()
+
+
+for (i in seq_along(PFASp)) {
+  lm = summary(lm(paste0("RPC_lm_residuals~", PFASp[i]), data = merged_df))$coefficients[2,4] 
+   df = data.frame(p.value = lm, PFAS = PFASp[i])
+    PFAS_rpc_lm_no_cov = rbind(PFAS_rpc_lm, df)
+}
+
+PFAS_rpc_lm_no_cov
+```
+```{r}
+PFAS_cpc_lm_no_cov = data.frame()
+
+
+for (i in seq_along(PFASp)) {
+  lm = summary(lm(paste0("CPC_lm_residuals~", PFASp[i]), data = merged_df))
+   df = data.frame(p.value = lm$coefficients[2,4] , PFAS = PFASp[i], estimate = lm$coefficients[2,1])
+    PFAS_cpc_lm_no_cov= rbind(PFAS_cpc_lm, df)
+}
+
+PFAS_cpc_lm_no_cov
+```
+in quartiles PFAS concentrations 
+accelerated vs deaccerlated age 
+
+
