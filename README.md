@@ -1,4 +1,4 @@
-![Screenshot of title and authors from paper in Environmental Research.](/main/title_screenshot.png)
+![Screenshot of title and authors from paper in Environmental Research.](title_screenshot.png)
 
 **Title:** Sex-specific effects of in utero exposure to per- and polyfluoroalkyl substances on placental development
 
