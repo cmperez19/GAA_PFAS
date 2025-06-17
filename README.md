@@ -1,7 +1,10 @@
 # GAA_PFAS Analysis
 Analysis of the effects of per- and polyfluoroalkyl substances (PFAS) on gestational age acceleration (GAA) and 5 estimated cell type proportions from human placental DNA methylation data. The results of this analysis are published in Environmental Research: [https://doi.org/10.1016/j.envres.2025.120868]. 
 ## Project Context
-PFAS are persistent pollutants that can accumulate in the placenta and contribute to neonatal health outcomes like low birthweight. 
+PFAS are persistent pollutants that can accumulate in the placenta and contribute to neonatal health outcomes like low birthweight. We utilized GAA and estimated the cell type proportion to measure overall developmental maturation and whether PFAS perturbs these factors. 
+
+## Methods  
+![Flow chart of methods performed in main analysis.](Method_flowchart.png)
 ## Data Availability 
 This analysis uses publicly available placental DNA methylation data from the Gene Expression Omnibus (GEO):
 **GSE288358 – Placental PFAS concentrations are associated with perturbations of placental DNA methylation**  
@@ -12,12 +15,15 @@ If using this dataset, cite the original authors:
 
 > Perez C, Sehgal N, Eick SM, Barr DB et al. Sex-specific effects of in utero exposure to per- and polyfluoroalkyl substances on placental development. Environ Res 2025 Apr 1;270:120868. PMID: 39884538
 ## Disclaimer
-This repository does not include individual-level chemical exposure data (e.g., PFAS measurements) used in the original study. Only the DNA methylation data from GEO accession [GSE288358](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE288358) is utilized here. 
+This repository does not include individual-level PFAS exposure and phenotype data used in the original study. However, data simulations may be generated using mean, SD, and other statistical metrics shared in published works. 
+
 ## Key Steps
-1. Load and clean raw data (`data/raw/UCMR5.csv`)
-2. Summarize detections by state and water system
-3. Map high-risk areas (> MCL, large populations)
+1. Load data 
+2. Linear regression analysis
+3. Mixture analysis (quantile g-computation and weighted quantile sum) 
 4. Generate summary tables & figures
+
+
 
 
 
