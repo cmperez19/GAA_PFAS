@@ -5,7 +5,7 @@ date: "2024-08-01"
 output: html_document
 ---
 
-## The file created in February differs from this one in August. In August, I removed Excel functions. Originally, I wanted to export my table outputs to an Excel sheet. Here I have a script for linear regression models, mixture models, and plots.  I chose to sparse and condense this information in the script shared in the main file for future ease and interpretability. 
+The file created in February differs from this one in August. In August, I removed Excel functions. Originally, I wanted to export my table outputs to an Excel sheet. Here I have a script for linear regression models, mixture models, and plots.  I chose to sparse and condense this information in the script shared in the main file for future ease and interpretability. 
 
 ```{r}
 setwd("~/GitHub/Planet_Epigenetic_GA_Clocks")
