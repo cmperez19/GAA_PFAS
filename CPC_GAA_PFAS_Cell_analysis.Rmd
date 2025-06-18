@@ -1,0 +1,306 @@
+
+---
+title: "Determining the relationships between reported GA/GAA and predicted placenta cell type proportion. Identifying the effects of PFAS on GAA."
+author: "Cynthia Perez"
+
+---
+
+## Introduction
+
+This analysis reproduces results related to the epigenetic clock using placental DNA methylation data. The code is structured to load pre-processed beta values, phenotype data, and log-transformed PFAS exposure data, and then conduct downstream statistical modeling.
+
+## Load Required Libraries
+
+```{r load-libraries, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(planet) #installation via biorender 
+library(qgcomp)
+library(ggpubr)
+library(car)
+library(stringr)  
+```
+
+## Load Data
+
+```{r load-data, message=FALSE}
+# Load normalized beta values
+load("2_BMIQ_Adjsuted.RData")
+load("ALLBETAS.FunNormBMIQ.RData")
+
+# Rename columns to match sample names
+colnames(FunNorm.BMIQ.ALL) <- pd$Sample_Name
+
+# Load PFAS data and phenotype info
+load("log_PFAS_pheno.Rdata")
+```
+
+## Data Cleaning and Subsetting
+
+```{r data-cleaning}
+# Retain only samples present in both datasets
+cols_to_keep <- intersect(colnames(FunNorm.BMIQ.ALL), rownames(log_pfas))
+FunNorm.BMIQ.ALL <- FunNorm.BMIQ.ALL[, cols_to_keep]
+
+# Subset phenotype and PFAS data accordingly
+pheno <- pheno[cols_to_keep, ]
+log_pfas <- log_pfas[cols_to_keep, ]
+log_pfas <- log_pfas %>%
+  rename_with(~ str_replace_all(.x, "-", "_"))   # "L-PFOA" -> "L_PFOA"
+
+# Append PFAS values to phenotype data
+pfas_vars <- c("L_PFOA","PFHxS","PFNA","PFDA","s_PFOS")
+pheno <- cbind(pheno, log_pfas[, pfas_vars])
+```
+
+## The variable gwg_kg (gestational weight gain) was in a separate dataset. Adding it to pheno dataset. 
+
+```{r adding-gwg_kg}
+load("ViCTER_maternal_environment_2024-05-29.RData")
+weight =  wide_pfas_modeling %>% 
+          filter(id %in% pheno$participant_id) %>%
+          select(id, gwg_kg) %>%
+          rename(participant_id = id)
+
+
+pheno= merge(pheno, weight, by = "participant_id")
+rm(list = ls()[!ls() %in% c("pheno")])
+```
+
+
+## Notes
+
+- The following files are not publicly available:
+  - `2_BMIQ_Adjsuted.RData`
+  - `ALLBETAS.FunNormBMIQ.RData`
+  - `log_PFAS_pheno.Rdata`
+  - `ViCTER_maternal_environment_2024-05-29.RData`
+- Raw beta values are available from (GEO): GSE288358 
+
+## predict gestational age using clocks from planet then extract residuals from regression analysis (gest_age_in_weeks_edd is reported GA)
+These variables were already featured in pheno dataset. This code chunk is showing how GAA variables were generated. We proceeded with CPC_GAA based on correlation test and participants used to generate the CPC clock were similar to our study sample population. 
+
+```{r generate-GAA,echo=FALSE}
+pheno$RPC_Age = predictAge(FunNorm.BMIQ.ALL, type = "RPC")
+pheno$CPC_Age = predictAge(FunNorm.BMIQ.ALL, type = "CPC")
+pheno$RRPC_Age = predictAge(FunNorm.BMIQ.ALL, type = "RRPC")
+
+pheno$RPC_GAA = summarY(lm(RPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$RRPC_GAA = summary(lm(RRPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+pheno$CPC_GAA= summary(lm(CPC_clock~gest_age_in_weeks_edd, pheno))$residuals
+
+## determine the proper clock to use for analysis based on correlation value 
+cor.test(pheno$gest_age_in_weeks_edd, pheno$CPC_clock)
+cor.test(pheno$gest_age_in_weeks_edd, pheno$RPC_clock)
+cor.test(pheno$gest_age_in_weeks_edd, pheno$RRPC_clock)
+```
+
+## Determinng the relationship between GAA/reported GA and 5 predicted cell type propotions'
+***for loop of linear regression model where GAA/GA is the independent variable and a cell type is the dependent variable adjusted for the following covariates: mom age at birth,  mom education, sex of child/placenta,  mom gestational weight gain (gwg_kg), and official enrollment category (lean or overweight), reported GA (only when GAA is the independent variable)**
+```{r cells-age, warning=FALSE}
+cells <-  c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
+age_levels <- c("CPC_GAA", "gest_age_in_weeks_edd")
+
+results_list <- list()
+
+for (age in age_levels) {
+
+  out <- vector("list", length(cells))
+
+  for (k in seq_along(cells)) {
+    
+    pf <- cells[k]
+if (age == "gest_age_in_weeks_edd"){
+  form <- reformulate(
+      c(
+        pf,
+        "mom_age_at_birth",
+        "mom_education",
+        "official_enroll_category",
+        "gwg_kg"
+      ),
+      response = age
+    )
+} else {
+    form <- reformulate(
+      c(
+        pf,
+        "mom_age_at_birth",
+        "mom_education",
+        "official_enroll_category",
+        "gest_age_in_weeks_edd",
+        "gwg_kg"
+      ),
+      response = age
+    )
+}
+    
+
+    model <- lm(form, data = pheno)
+    coef_mat <- coef(summary(model))
+    ci <- confint(model)[pf, ]
+
+    out[[k]] <- data.frame(
+      age       = age,
+      cell_type      = pf,
+      estimate  = coef_mat[pf, "Estimate"],
+      conf.low  = ci[1],
+      conf.high = ci[2],
+      p.value   = coef_mat[pf, "Pr(>|t|)"],
+      row.names = NULL
+    )
+  }
+
+  results_list[[age]] <- bind_rows(out)
+}
+
+# Separate results
+GAA_df <- results_list$CPC_GAA
+GA_df <- results_list$gest_age_in_weeks_edd
+
+GAA_df
+GA_df
+
+```
+
+
+## The main effect: GAA ~ PFAS + covariates
+**for loop of linear regression model where a PFAS chemical is the independent variable and CPC_GAA is the dependent variable adjusted for the following covariates: mom age at birth,  mom education, sex of child/placenta, reported gestational age,   mom gestational weight gain (gwg_kg), and official enrollment category (lean or overweight) ** 
+```{r main-GAA-PFAS}
+pfas_vars <- c("L_PFOA","PFHxS","PFNA","PFDA","s_PFOS")
+out <- vector("list", length(pfas_vars))
+
+for (k in seq_along(pfas_vars)) {
+  pf   <- pfas_vars[k]
+  form <- reformulate(
+    c(
+      pf, "mom_age_at_birth", "mom_education", "childs_sex",
+      "official_enroll_category", "gest_age_in_weeks_edd", "gwg_kg"
+    ),
+    response = "CPC_GAA"
+  )
+
+  fit <- lm(form, data = pheno)
+
+  ## get estimate + p-value
+  est  <- coef(summary(fit))[pf, "Estimate"]
+  pval <- coef(summary(fit))[pf, "Pr(>|t|)"]
+
+  ## add CI (default 0.95)
+  ci   <- confint(fit)[pf, ]     # two-column matrix: lower, upper
+
+  out[[k]] <- data.frame(
+    PFAS       = pf,
+    estimate   = est,
+    conf.low   = ci[1],
+    conf.high  = ci[2],
+    p.value    = pval,
+    row.names  = NULL
+  )
+}
+
+PFAS_cpc_lm <- do.call(rbind, out)
+
+PFAS_cpc_lm
+```
+
+## Interaction: GAA ~ PFAS * sex + covariates 
+**for loop of linear regression model where a PFAS chemical*sex is the independent variable and CPC_GAA is the dependent variable adjusted for the following covariates: mom age at birth,  mom education, sex of child/placenta, reported gestational age,  mom gestational weight gain (gwg_kg), and official enrollment category (lean or overweight) ** 
+```{r int-GAA-PFAS}
+pfas_vars <-  c("L_PFOA","PFHxS","PFNA","PFDA","s_PFOS")
+out <- vector("list", length(pfas_vars))   # pre-allocate
+
+for (k in seq_along(pfas_vars)) {
+  pf <- pfas_vars[k]
+
+  ## build CPC_GAA ~ PFAS * sex + covariates
+  form <- reformulate(
+    c(
+      pf,                                      # main PFAS effect
+      "mom_age_at_birth",
+      "mom_education",
+      "gest_age_in_weeks_edd",
+      "childs_sex",
+      "official_enroll_category", 
+      "gwg_kg",
+      paste0("childs_sex:", pf)                # interaction term
+    ),
+    response = "CPC_GAA"
+  )
+
+  fit <- lm(form, data = pheno)
+
+  ## identify the interaction row 
+  coef_mat <- coef(summary(fit))
+  int_row  <- nrow(coef_mat)
+
+  ## 95 % CI
+  ci <- confint(fit)[int_row, ]
+
+  out[[k]] <- data.frame(
+    PFAS      = pf,
+    estimate  = coef_mat[int_row, "Estimate"],
+    conf.low  = ci[1],
+    conf.high = ci[2],
+    p.value   = coef_mat[int_row, "Pr(>|t|)"],
+    row.names = NULL
+  )
+}
+
+PFAS_cpc_int <- bind_rows(out)
+PFAS_cpc_int
+
+```
+## Sex stratified: GAA ~ PFAS + covariates
+```{r sex-GAA-PFAS}
+pfas_vars <- c("L_PFOA", "PFHxS", "PFNA", "PFDA", "s_PFOS")
+sex_levels <- c("Female", "Male")
+
+results_list <- list()
+
+for (sex in sex_levels) {
+  dat_sex <- pheno %>% filter(childs_sex == sex)
+
+  out <- vector("list", length(pfas_vars))
+
+  for (k in seq_along(pfas_vars)) {
+    pf <- pfas_vars[k]
+
+    form <- reformulate(
+      c(
+        pf,
+        "mom_age_at_birth",
+        "mom_education",
+        "official_enroll_category",
+        "gest_age_in_weeks_edd",
+        "gwg_kg"
+      ),
+      response = "CPC_GAA"
+    )
+
+    model <- lm(form, data = dat_sex)
+    coef_mat <- coef(summary(model))
+    ci <- confint(model)[pf, ]
+
+    out[[k]] <- data.frame(
+      sex       = sex,
+      PFAS      = pf,
+      estimate  = coef_mat[pf, "Estimate"],
+      conf.low  = ci[1],
+      conf.high = ci[2],
+      p.value   = coef_mat[pf, "Pr(>|t|)"],
+      row.names = NULL
+    )
+  }
+
+  results_list[[sex]] <- bind_rows(out)
+}
+
+# Separate results
+PFAS_cpc_lm_f <- results_list$Female
+PFAS_cpc_lm_m <- results_list$Male
+
+PFAS_cpc_lm_f
+PFAS_cpc_lm_m
+
+```
+
