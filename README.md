@@ -14,13 +14,17 @@ If using this dataset, cite the original authors:
 > Everson TM, Sehgal N, Campbell K, Barr DB et al. Placental PFAS concentrations are associated with perturbations of placental DNA methylation. Environ Pollut 2025 Mar 1;368:125737. PMID: 39862910
 
 > Perez C, Sehgal N, Eick SM, Barr DB et al. Sex-specific effects of in utero exposure to per- and polyfluoroalkyl substances on placental development. Environ Res 2025 Apr 1;270:120868. PMID: 39884538
+
 ## Disclaimer
 This repository does not include individual-level PFAS exposure and phenotype data used in the original study. However, data simulations may be generated using mean, SD, and other statistical metrics shared in published works. 
 
+## Archive Folder
+This folder contains earlier versions of scripts and exploratory analyses that were useful during method development. They are not part of the main workflow but are retained for transparency.
+
 ## Key Steps
 1. Load data 
-2. Linear regression analysis
-3. Mixture analysis (quantile g-computation and weighted quantile sum) 
+2. Linear regression analysis (CPC_GAA_PFAS_Cell_analysis.Rmd)
+3. Mixture analysis () 
 4. Generate summary tables & figures
 
 
