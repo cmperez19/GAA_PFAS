@@ -24,7 +24,7 @@ This folder contains earlier versions of scripts and exploratory analyses that w
 ## Key Steps
 1. Load data 
 2. Linear regression analysis (CPC_GAA_PFAS_Cell_analysis.Rmd)
-3. Mixture analysis () 
+3. Mixture analysis (qgcomp_wqs_analysis.Rmd) 
 4. Generate summary tables & figures
 
 
