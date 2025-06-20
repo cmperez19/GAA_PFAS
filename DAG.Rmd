@@ -1,0 +1,69 @@
+##creating directed acyclic graph - featured in figure 1 
+```{r}
+library(ggdag)
+library(ggplot2)
+
+# Define the DAG
+dag_cand3 <- dagify(
+  GAA ~ PFAS + mom_age_at_birth + mom_education + childs_sex + official_enroll_category + gest_age_in_weeks_edd + gwg_kg,
+  placenta_cells ~ GAA, 
+  placenta_cells ~  gest_age_in_weeks_edd,
+  gest_age_in_weeks_edd ~ official_enroll_category +  gwg_kg + mom_age_at_birth + mom_education  ,
+  PFAS ~ mom_education,
+  gwg_kg ~ official_enroll_category,
+  placenta_cells ~ PFAS,
+  PFAS ~ official_enroll_category,
+  labels = c(
+    mom_age_at_birth = "Mom Age \n at Birth",
+    mom_education = "Mom \n Education",
+    wfaz = "Birth \n Weight",
+    wflz = "Birth \n Length",
+    gwg_kg = "Gestational Weight \n Gain",
+    official_enroll_category = "BMI Category \n at Enrollment",
+    PFAS = "PFAS",
+    GAA = "GAA", 
+    gest_age_in_weeks_edd = "GA",
+    placenta_cells = "Placental \n Cells",
+    childs_sex = "Sex of Neonate"
+  ),
+  exposure = "PFAS",
+  outcome = "GAA",
+  coords = list(x = c(GAA = 3.5, PFAS = -3, placenta_cells = 3.5, childs_sex = 0.5, 
+                      mom_age_at_birth = 4, mom_education = -2, 
+                      wfaz = 2.2, wflz = -0.5, 
+                      gwg_kg = 1.5, official_enroll_category = -2, 
+                      gest_age_in_weeks_edd = 2),
+                y = c(GAA = 0, PFAS = 0, placenta_cells = 2.5, childs_sex = 2.5,
+                      mom_age_at_birth = -1, mom_education = -1, 
+                      wfaz = 1.5, wflz = 1.5 , 
+                      gwg_kg = -2, official_enroll_category = -2, 
+                      gest_age_in_weeks_edd = -3))
+)
+
+# Create a data frame for node colors
+node_colors <- data.frame(
+  node = c("PFAS", "placenta_cells", "GAA", "childs_sex"),
+  color = c("blue", "orange", "orange", "purple"),
+  type = c("Exposure", "Outcome", "Outcome", "Effect Modifier")
+)
+
+
+
+# Create the plot
+dag_plot <- dag_cand3 %>% 
+  ggdag(text = FALSE) +
+  geom_dag_edges_fan() +
+  geom_dag_node(aes(color = factor(name, levels = node_colors$node))) +
+    scale_color_manual(
+    values = setNames(c(node_colors$color, "grey"), c(node_colors$node, "NA")),
+    labels = c("Exposure", "Outcome", "Outcome", "Effect Modifier", "Confounder")) +
+  geom_dag_text(aes(label = label), size = 3, color = "black") +
+  guides(color = guide_legend(override.aes = list(size = 5))) +
+  theme(legend.position = "bottom") +
+  labs(color = "Variable Type") +
+  theme_dag()
+
+# Print the plot
+dag_plot
+
+```
