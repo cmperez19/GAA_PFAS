@@ -322,7 +322,8 @@ ggplot(qgcomp_gaa, aes(x = Estimate, xmin = Lower.CI, xmax = Upper.CI, y = Outco
                     
                     #  For bold axis, include the following in theme(): axis.title.x = element_text(size=9, face="bold", colour = "black"), axis.text.y = element_text(size=9, face="bold", colour = "black")
 ```
-## wqs cpc_gaa 
+## weighted quantile sum preformed on output variable cpc_gaa 
+** preformed to confirm qgcomp analysis also preformed for all qgcomp output but all workflow not presented here** 
 ```{r}
 PFASp = c("L_PFOA","PFHxS", "PFNA", "PFDA", "s_PFOS")
 
