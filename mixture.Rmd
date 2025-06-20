@@ -14,7 +14,8 @@ library(qgcompint)
 library(ggpubr)
 library(car)
 library(stringr) 
-
+library(gWQS)
+library(dplyr)
 ```
 
 ## Load Data
@@ -55,8 +56,9 @@ pheno <- cbind(pheno, log_pfas[, pfas_vars])
 load("ViCTER_maternal_environment_2024-05-29.RData")
 weight =  wide_pfas_modeling %>% 
           filter(id %in% pheno$participant_id) %>%
-          select(id, gwg_kg) %>%
-          rename(participant_id = id)
+          select(id, gwg_kg) %>% 
+          #mutate(x = replace_na(gwg_kg, mean(weight$gwg_kg, na.rm = TRUE)))
+          dplyr::rename(participant_id = id)
 
 
 pheno= merge(pheno, weight, by = "participant_id")
@@ -76,42 +78,57 @@ rm(list = ls()[!ls() %in% c("pheno")])
 ## Quantile g-computation main effect
 ** Dependent variable: GAA, Independent Variable: PFAS Mixture, Covariates: mom age at birth, mom education, child/placenta sex, official enrollment category (lean or overweight), gestational age, gestational weight gain **
 ```{r}
-qgcomp(CPC_GAA ~ L_PFOA + PFHxS + PFNA + PFDA + s_PFOS + mom_age_at_birth + mom_education + childs_sex + official_enroll_category + gest_age_in_weeks_edd + gwg_kg, expnms = c("L_PFOA","PFHxS", "PFNA", "PFDA", "s_PFOS"), data = pheno, q = 4)
+q_gcomp = qgcomp(CPC_GAA ~ L_PFOA + PFHxS + PFNA + PFDA + s_PFOS + mom_age_at_birth + mom_education + childs_sex + official_enroll_category + gest_age_in_weeks_edd + gwg_kg, expnms = c("L_PFOA","PFHxS", "PFNA", "PFDA", "s_PFOS"), data = pheno, q = 4)
+
+main_CPC = data.frame(variable = "Main Effect", 
+                       estimate = q_gcomp[["psi"]], 
+                       psi.ci.ll = q_gcomp$ci.coef[2], 
+                       psi.ci.ul = q_gcomp$ci.coef[4], 
+                       p.value = q_gcomp[["pval"]][2])
+
+main_CPC
 ```
 
-## quantile g-computation sex stratified 
+## quantile g-computation sex stratified outcome CPC GAA 
 ```{r}
 
 sex_levels <- c("Female", "Male")
-
+out <- vector("list", length(sex))
 results_list <- list()
 
 for (sex in sex_levels) {
   dat_sex <- pheno %>% filter(childs_sex == sex)
 
-  PFAS_qgcomp = qgcomp(CPC_lm_residuals ~  L_PFOA + PFHxS + PFNA + PFDA + s_PFOS + mom_age_at_birth + mom_education + official_enroll_category + gest_age_in_weeks_edd + gwg_kg , expnms = c("L_PFOA","PFHxS", "PFNA", "PFDA", "s_PFOS"), data = dat_sex, q = 4)
+q_gcomp = qgcomp(CPC_GAA~  L_PFOA + PFHxS + PFNA + PFDA + s_PFOS + mom_age_at_birth + mom_education + official_enroll_category + gest_age_in_weeks_edd + gwg_kg , expnms = c("L_PFOA","PFHxS", "PFNA", "PFDA", "s_PFOS"), data = dat_sex, q = 4)
   
 
-  results_list[[sex]] <- bind_rows(out)
+out[[sex]] = data.frame(variable = sex, 
+                       estimate = q_gcomp[["psi"]], 
+                       psi.ci.ll = q_gcomp$ci.coef[2], 
+                       psi.ci.ul = q_gcomp$ci.coef[4], 
+                       p.value = q_gcomp[["pval"]][2])
 }
 
-# Separate results
-PFAS_qgcomp_f <- results_list$Female
-PFAS_qgcomp_m <- results_list$Male
+CPC_sex_strata <- bind_rows(out)
 
+CPC_sex_strata
 
 ```
 
-## quantile g-computation sex and PFAS mixture interaction term 
+## quantile g-computation sex and PFAS mixture interaction term outcome CPC_GAA 
 ```{r}
 library(qgcompint)
 pheno$childs_sex <- relevel(factor(pheno$childs_sex), ref="Female")
-qfitemm <- qgcomp.emm.noboot(f= CPC_lm_residuals ~ L_PFOA + PFHxS + PFNA + PFDA + s_PFOS + mom_age_at_birth + mom_education + gest_age_in_weeks_edd + childs_sex + official_enroll_category + gwg_kg, emmvar="childs_sex", expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data=pheno, q=4, family=gaussian())
+qfitemm <- qgcomp.emm.noboot(f= CPC_GAA ~ L_PFOA + PFHxS + PFNA + PFDA + s_PFOS + mom_age_at_birth + mom_education + gest_age_in_weeks_edd + childs_sex + official_enroll_category + gwg_kg, emmvar="childs_sex", expnms = c("L_PFOA","PFHxS", "PFNA", "PFDA", "s_PFOS"), data=pheno, q=4, family=gaussian())
 qfitemm 
 getstrateffects(qfitemm , emmval = 1)
-
+GAA_int = data.frame( variable = "ψ x Sex Int.term()",
+                      estimate = qfitemm[["psiint"]][["childs_sexMale:mixture"]], 
+                       psi.ci.ll = qfitemm$ci.coef[4,1], 
+                       psi.ci.ul = qfitemm$ci.coef[4,2], 
+                      p.value = qfitemm[["pval"]][4])
 ```
-
+## quantile g-computation cells types as dependent variable 
 ```{r}
 cells <-  c( "Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
 
@@ -120,152 +137,201 @@ out <- vector("list", length(cells))
 results_list <- list()
 
 for (k in cells) {
- 
-  mod1.formula <- as.formula(paste0(cells[k], "~official_enroll_category", 
+  mod1.formula <- as.formula(paste0(k, "~official_enroll_category", 
                                        "+mom_age_at_birth",
                                        "+gest_age_in_weeks_edd",
                                        "+mom_education", 
                                        "+gwg_kg",  
-                                       "+L_PFOS",  
+                                       "+s_PFOS",  
                                        "+PFNA", 
                                        "+PFHxS", 
                                        "+PFDA", 
-                                       "+s_PFOA"))
+                                       "+L_PFOA"))
   
 
  q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                     
-                                     expnms= c("PFOA","PFHxS", "PFNA", "PFDA","PFOS"),
+                                     expnms= c("L_PFOA","PFHxS", "PFNA", "PFDA","s_PFOS"),
                                      dat = pheno, 
                                      family=gaussian(), 
                                      q=4) 
   
- out[[k]] = data.frame(cell_type = cells[k], 
+ out[[k]] = data.frame(variable = "Main Effect", 
+                       cell_type = k, 
                        estimate = q_gcomp[["psi"]], 
                        psi.ci.ll = q_gcomp$ci.coef[2], 
                        psi.ci.ul = q_gcomp$ci.coef[4], 
                        p.value = q_gcomp[["pval"]][2])
   
 }
+results_cells_main_effects <- bind_rows(out)
 
-t = qgcomp(Trophoblasts ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  childs_sex +official_enroll_category + gest_age_in_weeks_edd + gwg_kg, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
-
-
-s = qgcomp(Stromal ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + childs_sex +  official_enroll_category + gest_age_in_weeks_edd + gwg_kg, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
-
-
-h = qgcomp(Hofbauer ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education + childs_sex + official_enroll_category + gest_age_in_weeks_edd + gwg_kg, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
-
-
-e = qgcomp(Endothelial ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  childs_sex +  official_enroll_category + gest_age_in_weeks_edd + gwg_kg, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
-
-
-n = qgcomp(nRBC ~ PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  childs_sex + official_enroll_category + gest_age_in_weeks_edd + gwg_kg, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
-
-
-st = qgcomp(Syncytiotrophoblast ~  PFOA + PFHxS + PFNA + PFDA + PFOS + mom_age_at_birth + mom_education +  childs_sex +  official_enroll_category + gest_age_in_weeks_edd + gwg_kg, expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data = pheno, q = 4)
-
-
+results_cells_main_effects
 ```
-
+## quantile g-computation sex stratified cells types as dependent variable 
 ```{r}
-outcome_list <- c("Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
+sex_levels <- c("Female", "Male")
+cells <- c("Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
 
-mixture_cells_m = data.frame()
-   for ( i in 1:length(outcome_list)){
-    mod1.formula <- as.formula(paste0(outcome_list[i], "~official_enroll_category", 
+results_list <- list()
+
+for (sex in sex_levels) {
+  dat_sex <- pheno %>% filter(childs_sex == sex)
+  out <- vector("list", length(cells))
+for ( k in cells){
+   
+  mod1.formula <- as.formula(paste0(k, "~official_enroll_category", 
                                        "+mom_age_at_birth",
                                        "+gest_age_in_weeks_edd",
-                                       "+mom_education", "+ gwg_kg", # cell mix  
-                                       "+PFOS",  "+PFNA", "+PFHxS",  "+PFDA", "+PFOA"))
-      q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                         # pfas 
-                                     expnms= c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"),
-                                     dat = pheno[which(pheno$childs_sex == "Male"),], 
-                                     family=gaussian(), 
-                                     q=4) 
-      
-       df = data.frame(cell = outcome_list[i], estimate = q_gcomp[["psi"]], p.value = q_gcomp[["pval"]][2])
-  mixture_cells_m = rbind(mixture_cells_m, df)
-   }
+                                       "+mom_education", 
+                                       "+gwg_kg",  
+                                       "+s_PFOS",  
+                                       "+PFNA", 
+                                       "+PFHxS", 
+                                       "+PFDA", 
+                                       "+L_PFOA"))
   
 
-mixture_cells_m
-
-mixture_cells_f = data.frame()
-   for ( i in 1:length(outcome_list)){
-    mod1.formula <- as.formula(paste0(outcome_list[i], "~official_enroll_category", 
-                                       "+mom_age_at_birth",
-                                       "+gest_age_in_weeks_edd",
-                                       "+mom_education", "+ gwg_kg", # cell mix  
-                                       "+PFOS",  "+PFNA", "+PFHxS",  "+PFDA", "+PFOA"))
-      q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                         # pfas 
-                                     expnms= c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"),
-                                     dat = pheno[which(pheno$childs_sex == "Female"),], 
+ q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                     
+                                     expnms= c("L_PFOA","PFHxS", "PFNA", "PFDA","s_PFOS"),
+                                     dat = dat_sex, 
                                      family=gaussian(), 
                                      q=4) 
-      
-       df = data.frame(cell = outcome_list[i], estimate = q_gcomp[["psi"]], p.value = q_gcomp[["pval"]][2])
-  mixture_cells_f = rbind(mixture_cells_f, df)
-   }
 
-mixture_cells_f
-```
 
-```{r}
-#"Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast"
-results = data.frame()
-outcome_list <- c("Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
-   for ( i in 1:length(outcome_list)){
-    mod1.formula <- as.formula(paste0(outcome_list[i], "~official_enroll_category", 
-                                       "+mom_age_at_birth",
-                                       "+gest_age_in_weeks_edd",
-                                       "+mom_education", "+ gwg_kg",# cell mix  
-                                       "+PFOS",  "+PFNA", "+PFHxS",  "+PFDA", "+PFOA"))
-      q_gcomp <- qgcomp::qgcomp.noboot(mod1.formula,                                         # pfas 
-                                     expnms= c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"),
-                                     dat = pheno, 
-                                     family=gaussian(), 
-                                     q=4) 
-    int = qgcomp.emm.noboot(f= mod1.formula, emmvar="childs_sex", expnms = c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS"), data=pheno, q=4, family=gaussian())
- 
-    print(outcome_list[i])
-    print(q_gcomp)
-    print(int)
-
-    # Output results from mixture 
-    psi<-round(q_gcomp$psi,4) # extract overall mixture estimate
-    # pvals and adjust it
-    pval <- q_gcomp[["pval"]][[2]]
-    # 95%ci
-    psi.ci.ll<-round(q_gcomp$ci.coef,5)[2] #extract CI for mixture
-    psi.ci.ul<-round(q_gcomp$ci.coef,5)[4] #extract CI for mixture
-    
-    # figure 1.  heatmap for plot(qgcomp)
-    # use weights from
-    weights = c(q_gcomp[["pos.weights"]], -q_gcomp[["neg.weights"]])
-    weights = data.frame(t(weights))
-    weights <- weights[, c("PFOA","PFHxS", "PFNA", "PFDA", "PFOS")]
-    
-    # figure 2. heatmap
-    pos.psi<-round(q_gcomp$pos.psi,5) #extract sum of positive weights for mixture
-    neg.psi<-round(q_gcomp$neg.psi,5) #extract sum of negative weights for mixture
-    
-    
-    df = data.frame( dependent_variable = outcome_list[i], 
-                      psi = psi, 
-                      psi.ci.ll = psi.ci.ll, 
-                      psi.ci.ul = psi.ci.ul, 
-                      pval = pval,
-                      pos.psi=  pos.psi,
-                      neg.psi=  neg.psi,
-                      PFOS =  weights$PFOS,
-                      PFNA =  weights$PFHxS,
-                      PFHxS =  weights$PFHxS,
-                      PFDA =   weights$PFDA,
-                      PFOA=  weights$PFOA,
-                      sex = sex)
-    results = rbind(results, df)
+  
+out[[k]] = data.frame( variable = paste0(sex, " Strata"),  
+                       cell_type = k,
+                       estimate = q_gcomp[["psi"]], 
+                       psi.ci.ll = q_gcomp$ci.coef[2], 
+                       psi.ci.ul = q_gcomp$ci.coef[4], 
+                       p.value = q_gcomp[["pval"]][2])
+} 
+  results_list[[sex]] <- bind_rows(out)
 }
 
+cells_qgcomp_f = results_list$Female
+cells_qgcomp_f
+cells_qgcomp_m = results_list$Male
+cells_qgcomp_m
+```
+## quantile g-computation ψ x Sex Int.term() cells types as dependent variable 
+```{r}
+library(qgcompint)
+pheno$childs_sex <- relevel(factor(pheno$childs_sex), ref="Female")
 
+cells <- c("Trophoblasts", "Stromal", "Hofbauer", "Endothelial", "nRBC",  "Syncytiotrophoblast")
+
+results_list <- list()
+
+  out <- vector("list", length(cells))
+for ( k in cells){
+   
+  mod1.formula <- as.formula(paste0(k, "~official_enroll_category", 
+                                       "+mom_age_at_birth",
+                                       "+gest_age_in_weeks_edd",
+                                       "+mom_education", 
+                                       "+childs_sex",
+                                       "+gwg_kg", 
+                                       "+s_PFOS",  
+                                       "+PFNA", 
+                                       "+PFHxS", 
+                                       "+PFDA", 
+                                       "+L_PFOA"))
+  
+
+ qfitemm <- qgcomp.emm.noboot(f= mod1.formula, 
+                              expnms = c("L_PFOA","PFHxS", "PFNA", "PFDA", "s_PFOS"), 
+                              emmvar="childs_sex", 
+                              data=pheno, 
+                              q=4, 
+                              family=gaussian())
+qfitemm 
+
+getstrateffects(qfitemm , emmval = 1)
+
+out[[k]] = data.frame( variable = "ψ x Sex Int.term()",
+                      cell_type = k,
+                      estimate = qfitemm[["psiint"]][["childs_sexMale:mixture"]], 
+                       psi.ci.ll = qfitemm$ci.coef[4,1], 
+                       psi.ci.ul = qfitemm$ci.coef[4,2], 
+                      p.value = qfitemm[["pval"]][4])
+} 
+
+results_cells_int <- dplyr::bind_rows(out)
+results_cells_int 
+```
+
+##create csv file - celltypedf 
+```{r}
+celltypeDF = rbind(results_cells_main_effects, cells_qgcomp_f, cells_qgcomp_m, results_cells_int)
+rownames(celltypeDF) = NULL
+
+celltypeDF = celltypeDF %>% arrange(cell_type)
+colnames(CellTypeDF) = c("Variable", "Cell.Type", "Estimate", "Lower.CI", "Upper.CI","p.value" )
+
+write.csv(celltypeDF, file = "CellTypeDF.csv", quote = F, row.names = F)
+```
+
+##create csv file - qgcomp_gaa
+```{r}
+qgcomp_gaa = rbind(main_CPC, CPC_sex_strata, GAA_int) 
+colnames(qgcomp_gaa) = c("Variable",  "Estimate", "Lower.CI", "Upper.CI", "p.value")
+rownames(qgcomp_gaa) = NULL
+write.csv(qgcomp_gaa, file = "qgcomp_gaa.csv", quote = F, row.names = F)
+```
+
+
+##forest plot of cell types outcomes 
+```{r}
+CellTypeDF <- read.csv("CellTypeDF.csv") #made this document 
+CellTypeDF$Variable <- factor(CellTypeDF$Variable, levels = c("Main Effect ", "ψ x Sex Int.term()", "Female Strata",  "Male Strata"))
+library(forestplot)
+ggplot(CellTypeDF, aes(x = Estimate, xmin = Lower.CI, xmax = Upper.CI, y = Cell.Type)) +
+  geom_vline(xintercept = 0, linetype = "longdash", position=position_dodge(width = 0.5)) +
+  geom_errorbarh(height = 0.2, lwd=1.05, position=position_dodge(width = 0.5)) +
+  geom_point(size = 2, shape = "circle", stroke = 0.5, position=position_dodge(width = 0.5)) +
+  xlab("Effect Estimate (95% CI)") +
+  ylab(" ")  +
+  facet_wrap(~Variable) + 
+  theme_bw() +theme(panel.border = element_blank(), legend.position="top", 
+                    axis.title.x = element_text(size=12, colour = "black"), 
+                    axis.text.x = element_text(size=12, colour = "black"), 
+                    axis.text.y = element_text(size=12, colour = "black"),
+                    strip.text = element_text(size = 12,face="bold")) 
+```
+
+##forest plot of cpc GAA outcome 
+```{r}
+qgcomp_gaa <- read.csv("qgcomp_gaa.csv") #this was 
+qgcomp_gaa$Variable <- factor(qgcomp_gaa$Variable, levels = c("Main Effect", "ψ x Sex Int.term()", "Female Strata", "Male Strata"))
+
+library(forestplot)
+ggplot(qgcomp_gaa, aes(x = Estimate, xmin = Lower.CI, xmax = Upper.CI, y = Outcome)) +
+  geom_vline(xintercept = 0, linetype = "longdash", position=position_dodge(width = 0.5)) +
+  geom_errorbarh(height = 0.2, lwd=1.05, position=position_dodge(width = 0.5)) +
+  geom_point(size = 2, shape = "circle", stroke = 0.5, position=position_dodge(width = 0.5)) +
+  xlab("Effect Estimate (95% CI)") +
+  ylab(" ")  +
+  facet_wrap(~Variable) + #strip.position="left", nrow=72, scales = "free_y")+
+  theme_bw() +theme(panel.border = element_blank(), legend.position="top", 
+                    axis.title.x = element_text(size=12, colour = "black"), 
+                    axis.text.x = element_text(size=12, colour = "black"), 
+                    axis.text.y = element_text(size=12, colour = "black"),
+                    strip.text = element_text(size = 12,face="bold")) 
+                    # + scale_y_discrete(labels=c("CPC_lm_residuals"="GAA"))
+                    
+                    #  For bold axis, include the following in theme(): axis.title.x = element_text(size=9, face="bold", colour = "black"), axis.text.y = element_text(size=9, face="bold", colour = "black")
+```
+## wqs cpc_gaa 
+```{r}
+PFASp = c("L_PFOA","PFHxS", "PFNA", "PFDA", "s_PFOS")
+
+results2int <- gwqs(formula = CPC_GAA ~ wqs*childs_sex + mom_age_at_birth + mom_education +  childs_sex + official_enroll_category+ gwg_kg, bint_cat_pos= T, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(results2int)
+confint(results2int, level=0.95)
+
+results2int <- gwqs(formula = CPC_GAA ~ wqs*childs_sex + mom_age_at_birth + mom_education +  childs_sex + official_enroll_category+ gwg_kg, bint_cat_pos=FALSE, mix_name = PFASp, data = pheno, q = 4, validation = 0, b = 20, plan_strategy = "multicore", family = "gaussian", seed = 10)
+summary(results2int)
+confint(results2int, level=0.95)
 
 ```
