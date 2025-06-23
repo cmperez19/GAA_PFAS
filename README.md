@@ -1,4 +1,4 @@
-# GAA_PFAS Analysis
+# PFAS and GAA Analysis
 Primary analysis of the effects of per- and polyfluoroalkyl substances (PFAS) on gestational age acceleration (GAA) and 5 estimated cell type proportions from human placental DNA methylation data. The results of this analysis are published in Environmental Research: [https://doi.org/10.1016/j.envres.2025.120868]. 
 ## Project Context
 PFAS are persistent pollutants that can accumulate in the placenta and contribute to neonatal health outcomes like low birthweight. We utilized GAA and estimated the cell type proportion to measure overall developmental maturation and whether PFAS perturbs these factors. 
